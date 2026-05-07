@@ -6,36 +6,47 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nicolas_flammel.ghostmapping",
+      "config": {
+        "googleMapsApiKey": "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U"
+      },
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to align historical ghost buildings with the modern skyline.",
+        "NSLocationWhenInUseUsageDescription": "This app uses GPS to calculate your distance to historical NYC landmarks."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.nicolas_flammel.ghostmapping",
+      "permissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "0cb6e3c7-eb10-434c-b976-bd29cf1d1d21"
+        "projectId": "your-project-id-will-be-here-automatically"
       }
-    },
-    "owner": "nicolas_flammel",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
-    "updates": {
-      "url": "https://u.expo.dev/0cb6e3c7-eb10-434c-b976-bd29cf1d1d21"
     }
   }
 }
