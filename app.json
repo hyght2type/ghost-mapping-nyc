@@ -24,6 +24,18 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0cb6e3c7-eb10-434c-b976-bd29cf1d1d21"
+      }
+    },
+    "owner": "nicolas_flammel",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/0cb6e3c7-eb10-434c-b976-bd29cf1d1d21"
     }
   }
 }

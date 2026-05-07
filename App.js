@@ -13,40 +13,41 @@ const GHOST_SITES = [
     name: "THE ASTOR LIBRARY",
     year: "1854-1911",
     coords: { latitude: 40.7292, longitude: -73.9921 },
-    description: "Now the Public Theater. Once the city's premier library.",
+    description:
+      "Lafayette & 4th. Now the Public Theater. Historic stone facade.",
   },
   {
     id: "singer",
     name: "SINGER BUILDING",
     year: "1908-1968",
     coords: { latitude: 40.7093, longitude: -74.0116 },
-    description: "Liberty St & Broadway. Beaux-Arts giant.",
+    description: "Liberty St & Broadway. Once the tallest building on earth.",
   },
   {
     id: "world",
     name: "NY WORLD BUILDING",
     year: "1890-1955",
     coords: { latitude: 40.7121, longitude: -74.0048 },
-    description: "Park Row. Famous for its massive golden dome.",
+    description: "Park Row. Famous for its golden dome and newspaper history.",
   },
   {
     id: "msg2",
     name: "MADISON SQ GARDEN II",
     year: "1890-1925",
     coords: { latitude: 40.7417, longitude: -73.9872 },
-    description: "Madison Ave & 26th St. Masterpiece by Stanford White.",
+    description: "Madison Ave & 26th St. Designed by Stanford White.",
   },
   {
     id: "hippo",
     name: "THE HIPPODROME",
     year: "1905-1939",
     coords: { latitude: 40.7554, longitude: -73.9828 },
-    description: "6th Ave & 43rd St. The world's largest theatre.",
+    description: "6th Ave & 43rd St. A legendary theatre for spectacles.",
   },
 ];
 
 export default function App() {
-  const [permission] = useCameraPermissions();
+  const [permission, requestPermission] = useCameraPermissions();
   const [heading, setHeading] = useState(0);
   const [motion, setMotion] = useState({ beta: 1.5 });
   const [userLoc, setUserLoc] = useState(null);
@@ -66,6 +67,11 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Force permission check on mount
+    if (permission && !permission.granted) {
+      requestPermission();
+    }
+
     Magnetometer.setUpdateInterval(16);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(-data.x, data.y) * (180 / Math.PI);
@@ -97,7 +103,7 @@ export default function App() {
       magSub.remove();
       motionSub.remove();
     };
-  }, []);
+  }, [permission]);
 
   useEffect(() => {
     if (!userLoc) return;
@@ -135,24 +141,28 @@ export default function App() {
     setActiveSite(viewing);
   }, [userLoc, heading]);
 
-  if (!permission?.granted)
+  if (!permission?.granted) {
     return (
       <View style={styles.center}>
-        <Text>Access Required</Text>
+        <Text style={{ color: "white" }}>Waiting for Camera Permission...</Text>
       </View>
     );
+  }
 
   return (
     <View style={styles.container}>
-      <CameraView style={StyleSheet.absoluteFill} facing="back" />
+      {/* LAYER 1: ACTUAL CAMERA */}
+      <View style={StyleSheet.absoluteFill}>
+        <CameraView style={{ flex: 1 }} facing="back" active={true} />
+      </View>
 
+      {/* LAYER 2: 3D GHOST OVERLAY */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Canvas
-          gl={{ alpha: true }}
+          gl={{ alpha: true, antialias: false }}
           camera={{ fov: 45, near: 0.1, far: 10000 }}
         >
-          <ambientLight intensity={2.0} />
-          {/* CRITICAL UPDATE: Passing dist to the component */}
+          <ambientLight intensity={2.5} />
           {activeSite && (
             <GhostBuilding
               heading={heading}
@@ -163,12 +173,14 @@ export default function App() {
         </Canvas>
       </View>
 
-      <View style={styles.hud}>
+      {/* LAYER 3: HUD UI */}
+      <View style={styles.hud} pointerEvents="none">
         <Text style={styles.brand}>GHOST MAPPING // NYC</Text>
+
         <View style={styles.radarBox}>
           <Text style={styles.label}>NEAREST SIGNAL:</Text>
           <Text style={styles.value}>
-            {nearestSite ? nearestSite.name : "SEARCHING..."}
+            {nearestSite ? nearestSite.name : "SCANNING..."}
           </Text>
           <Text style={styles.distValue}>
             {nearestSite ? `${nearestSite.dist.toFixed(0)}m` : "---"}
@@ -189,7 +201,12 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#000",
+  },
   hud: { position: "absolute", top: 60, left: 20, right: 20 },
   brand: {
     color: "#ffffff",
@@ -210,7 +227,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: "#00ffff",
-    backgroundColor: "rgba(0,255,255,0.1)",
+    backgroundColor: "rgba(0,255,255,0.2)",
   },
   label: { color: "#ffffff", fontSize: 9, opacity: 0.6, letterSpacing: 1 },
   lockLabel: {
