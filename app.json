@@ -14,13 +14,13 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.nicolas_flammel.ghostmapping",
+      "bundleIdentifier": "com.petermercado.ghostmapping.nyc",
       "config": {
         "googleMapsApiKey": "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U"
       },
       "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to align historical ghost buildings with the modern skyline.",
-        "NSLocationWhenInUseUsageDescription": "This app uses GPS to calculate your distance to historical NYC landmarks."
+        "NSCameraUsageDescription": "Aligns historical ghosts with the modern skyline.",
+        "NSLocationWhenInUseUsageDescription": "Finds historical sites near your current location."
       }
     },
     "android": {
@@ -28,7 +28,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.nicolas_flammel.ghostmapping",
+      "package": "com.petermercado.ghostmapping.nyc",
       "permissions": [
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
@@ -39,9 +39,6 @@
           "apiKey": "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U"
         }
       }
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
