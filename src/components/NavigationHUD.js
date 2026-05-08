@@ -13,10 +13,10 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // COMPASS: North correction
+  // COMPASS: Corrected for True North in NYC
   const compassRotation = (360 - magHeading) % 360;
 
-  // DIRECTIONAL BOX MATH
+  // TARGETING MATH
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -31,40 +31,38 @@ export function NavigationHUD({
   const arrowRotation = isOnTarget ? 0 : diff < 0 ? -90 : 90;
 
   return (
-    <View style={styles.hudWrapper} pointerEvents="box-none">
-      {/* INDEPENDENT COMPASS: TOP RIGHT */}
-      <View style={styles.compassContainer}>
+    <View style={styles.absoluteLayer} pointerEvents="box-none">
+      {/* INDEPENDENT COMPASS: Fixed to top right */}
+      <View style={styles.compassBox}>
         <View
           style={[
-            styles.compassRing,
+            styles.ring,
             { transform: [{ rotate: `${compassRotation}deg` }] },
           ]}
         >
-          <Text style={styles.northText}>N</Text>
+          <Text style={styles.nText}>N</Text>
           <View style={styles.needle} />
         </View>
       </View>
 
-      {/* CENTER TARGETING BOX */}
+      {/* CENTER TARGETING: Fixed to middle */}
       {!isActive && (
-        <View style={styles.reticleContainer} pointerEvents="none">
-          <View style={[styles.targetBox, isOnTarget && styles.activeBox]}>
-            <Text style={styles.buildingTitle}>{target.name}</Text>
+        <View style={styles.centerAim}>
+          <View style={[styles.reticle, isOnTarget && styles.reticleActive]}>
+            <Text style={styles.name}>{target.name}</Text>
             <View
               style={{
                 transform: [{ rotate: `${arrowRotation}deg` }],
                 marginVertical: 20,
               }}
             >
-              <Text
-                style={[styles.arrowIcon, isOnTarget && { color: "#00ffff" }]}
-              >
+              <Text style={[styles.arrow, isOnTarget && { color: "#00ffff" }]}>
                 ▲
               </Text>
             </View>
-            <Text style={styles.statusLabel}>
+            <Text style={styles.msg}>
               {isOnTarget
-                ? "TARGET IDENTIFIED"
+                ? "TARGET LOCKED"
                 : diff < 0
                   ? "SCAN LEFT"
                   : "SCAN RIGHT"}
@@ -77,60 +75,50 @@ export function NavigationHUD({
 }
 
 const styles = StyleSheet.create({
-  hudWrapper: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 9999,
-    elevation: 10,
-  },
-  compassContainer: {
+  absoluteLayer: {
     position: "absolute",
-    top: 60,
-    right: 25,
+    top: 0,
+    left: 0,
+    width: width,
+    height: height,
+    zIndex: 99999,
   },
-  compassRing: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  compassBox: { position: "absolute", top: 60, right: 30 },
+  ring: {
+    width: 65,
+    height: 65,
+    borderRadius: 33,
     borderWidth: 2,
     borderColor: "#00ffff",
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     alignItems: "center",
     justifyContent: "center",
   },
-  northText: {
+  nText: {
     color: "#00ffff",
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "900",
     position: "absolute",
     top: 4,
   },
-  needle: { width: 2, height: 25, backgroundColor: "#ff3333", marginTop: 10 },
-  reticleContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  targetBox: {
-    width: 240,
-    padding: 25,
+  needle: { width: 2, height: 28, backgroundColor: "#ff3333", marginTop: 10 },
+  centerAim: { flex: 1, justifyContent: "center", alignItems: "center" },
+  reticle: {
+    width: 260,
+    padding: 35,
     backgroundColor: "rgba(0,0,0,0.9)",
     borderRadius: 2,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
   },
-  activeBox: { borderColor: "#00ffff" },
-  buildingTitle: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 2,
+  reticleActive: {
+    borderColor: "#00ffff",
+    shadowColor: "#00ffff",
+    shadowRadius: 10,
+    shadowOpacity: 0.5,
   },
-  statusLabel: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
-    opacity: 0.6,
-  },
-  arrowIcon: { color: "#fff", fontSize: 40 },
+  name: { color: "#fff", fontSize: 13, fontWeight: "900", letterSpacing: 2 },
+  msg: { color: "#fff", fontSize: 11, fontWeight: "bold", opacity: 0.8 },
+  arrow: { color: "#fff", fontSize: 48 },
 });
