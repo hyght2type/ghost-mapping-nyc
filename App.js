@@ -13,14 +13,7 @@ const GHOST_SITES = [
     name: "ST. STEPHEN (FRONT)",
     year: "1854-PRESENT",
     coords: { latitude: 40.7424, longitude: -73.9806 },
-    description: "28th St Entrance. Neo-Gothic landmark.",
-  },
-  {
-    id: "st-stephen-rear",
-    name: "ST. STEPHEN (REAR)",
-    year: "1854-PRESENT",
-    coords: { latitude: 40.7431, longitude: -73.9801 },
-    description: "29th St Facade. Historic neighborhood church.",
+    description: "28th St Entrance. Famous for its historic Brumidi murals.",
   },
 ];
 
@@ -101,7 +94,8 @@ export default function App() {
         closest = { ...site, dist };
       }
 
-      if (dist < 300) {
+      // STRICTOR LOCK: Only engage if within 150m and pointing within 20 degrees
+      if (dist < 150) {
         const dy = site.coords.latitude - userLoc.latitude;
         const dx =
           Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -109,10 +103,7 @@ export default function App() {
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
-        if (
-          (angleDiff < 25 || angleDiff > 335) &&
-          (!viewing || dist < viewing.dist)
-        ) {
+        if (angleDiff < 20 || angleDiff > 340) {
           viewing = { ...site, dist };
         }
       }
@@ -125,7 +116,7 @@ export default function App() {
   if (!permission?.granted)
     return (
       <View style={styles.center}>
-        <Text>Grant Camera Access...</Text>
+        <Text>Grant Access...</Text>
       </View>
     );
 
@@ -201,9 +192,9 @@ const styles = StyleSheet.create({
   lockBox: {
     marginTop: 15,
     padding: 12,
-    borderWidth: 1,
-    borderColor: "#00ffff",
-    backgroundColor: "rgba(0,255,255,0.2)",
+    borderLeftWidth: 3,
+    borderLeftColor: "#00ffff",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   label: { color: "#ffffff", fontSize: 9, opacity: 0.6, letterSpacing: 1 },
   lockLabel: {
