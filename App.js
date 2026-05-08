@@ -9,18 +9,25 @@ import { GhostBuilding } from "./src/components/GhostBuilding";
 
 const GHOST_SITES = [
   {
+    id: "st-stephen-front",
+    name: "ST. STEPHEN (FRONT)",
+    year: "1854-PRESENT",
+    coords: { latitude: 40.7424, longitude: -73.9806 }, // 28th St Entrance
+    description: "Our Lady of the Scapular. Known for the Brumidi murals.",
+  },
+  {
+    id: "st-stephen-rear",
+    name: "ST. STEPHEN (REAR)",
+    year: "1854-PRESENT",
+    coords: { latitude: 40.7431, longitude: -73.9801 }, // 29th St Facade
+    description: "The Gothic rear facade of the historic St. Stephen's.",
+  },
+  {
     id: "hippo",
     name: "THE HIPPODROME",
     year: "1905-1939",
     coords: { latitude: 40.7554, longitude: -73.9828 },
     description: "6th Ave & 43rd St. A legendary theatre for spectacles.",
-  },
-  {
-    id: "astor",
-    name: "THE ASTOR LIBRARY",
-    year: "1854-1911",
-    coords: { latitude: 40.7292, longitude: -73.9921 },
-    description: "Lafayette & 4th. Now the Public Theater.",
   },
 ];
 
@@ -47,7 +54,6 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    // SENSOR DAMPING (Fixes the Jitter)
     Magnetometer.setUpdateInterval(16);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(-data.x, data.y) * (180 / Math.PI);
@@ -162,7 +168,7 @@ export default function App() {
         {activeSite && (
           <View style={styles.lockBox}>
             <Text style={styles.lockLabel}>TARGET LOCKED</Text>
-            <Text style={styles.lockValue}>{activeSite.year}</Text>
+            <Text style={styles.lockValue}>{activeSite.name}</Text>
             <Text style={styles.smallDesc}>{activeSite.description}</Text>
           </View>
         )}
