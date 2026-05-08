@@ -110,14 +110,11 @@ export default function App() {
         site.coords.latitude,
         site.coords.longitude,
       );
-
-      // Radar always shows the closest point
       if (dist < minFinishDist) {
         minFinishDist = dist;
         closest = { ...site, dist };
       }
 
-      // FIX: Only lock onto buildings within 500m of your feet
       if (dist < 500) {
         const dy = site.coords.latitude - userLoc.latitude;
         const dx =
@@ -126,7 +123,6 @@ export default function App() {
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
-        // Lock range of 30 degrees
         if (angleDiff < 30 || angleDiff > 330) {
           viewing = { ...site, dist };
         }
@@ -156,7 +152,6 @@ export default function App() {
           camera={{ fov: 45, near: 0.1, far: 10000 }}
         >
           <ambientLight intensity={1.5} />
-          {/* Only render the 3D model if it's the active neighborhood site */}
           {activeSite && (
             <GhostBuilding
               heading={heading}
@@ -169,7 +164,6 @@ export default function App() {
 
       <View style={styles.hud} pointerEvents="none">
         <Text style={styles.brand}>GHOST MAPPING // NYC</Text>
-
         <View style={styles.radarBox}>
           <Text style={styles.label}>NEAREST SIGNAL:</Text>
           <Text style={styles.value}>
@@ -180,7 +174,6 @@ export default function App() {
           </Text>
         </View>
 
-        {/* HUD only shows Target Locked if it matches the active local site */}
         {activeSite && (
           <View style={styles.lockBox}>
             <Text style={styles.lockLabel}>TARGET LOCKED</Text>
