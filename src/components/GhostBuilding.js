@@ -37,7 +37,8 @@ export function GhostBuilding({ motion, distance }) {
 
   return (
     <mesh ref={meshRef}>
-      <boxGeometry args={[25, 45, 30]} />
+      {/* Madison Square Garden II was huge: approx 60m wide, 130m deep, and the tower was 90m */}
+      <boxGeometry args={[60, 90, 130]} />
       <meshBasicMaterial
         color="#00ffff"
         wireframe={true}

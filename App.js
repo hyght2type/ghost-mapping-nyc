@@ -10,11 +10,11 @@ import { NavigationArrows } from "./src/components/NavigationArrows";
 
 const GHOST_SITES = [
   {
-    id: "st-stephen-front",
-    name: "ST. STEPHEN (FRONT)",
-    year: "1854-PRESENT",
-    coords: { latitude: 40.7424, longitude: -73.9806 },
-    description: "28th St Entrance. Neo-Gothic landmark.",
+    id: "ny-life-building",
+    name: "NY LIFE / MSG II",
+    year: "1890-1925 (MSG)",
+    coords: { latitude: 40.7427, longitude: -73.9856 }, // The old Garden's center
+    description: "Site of Stanford White's MSG. The Garden Theatre was here.",
   },
 ];
 
@@ -95,8 +95,11 @@ export default function App() {
         closest = { ...site, dist };
       }
 
-      if (dist < 300) {
+      // Change from 150m to 800m so you can 'see' it from your current spot
+      if (dist < 800) {
         const dy = site.coords.latitude - userLoc.latitude;
+        // ... rest of the logic
+
         const dx =
           Math.cos((userLoc.latitude * Math.PI) / 180) *
           (site.coords.longitude - userLoc.longitude);
