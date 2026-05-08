@@ -116,7 +116,7 @@ export default function App() {
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
-        // PRIORITIZE NEAREST: Only switch the lock if the viewing site is the closest one
+        // Locked priority: If looking at a site, prefer the closest one
         if (
           (angleDiff < 30 || angleDiff > 330) &&
           (!viewing || dist < viewing.dist)
