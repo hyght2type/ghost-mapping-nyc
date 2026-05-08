@@ -8,7 +8,7 @@ import * as Location from "expo-location";
 import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
-const SITE = {
+const TARGET_SITE = {
   name: "NY LIFE / MSG II",
   coords: { latitude: 40.7427, longitude: -73.9856 },
 };
@@ -24,13 +24,14 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    // The 6AM Magnetometer Logic (Standard Axis)
+    // Magnetometer for Independent North
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
       setMagHeading((angle + 360 + 13.0) % 360);
     });
 
+    // Google API for VSP
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -52,32 +53,33 @@ export default function App() {
 
   useEffect(() => {
     if (!userLoc) return;
-    const dy = (SITE.coords.latitude - userLoc.latitude) * 111320;
+    const dy = (TARGET_SITE.coords.latitude - userLoc.latitude) * 111320;
     const dx =
-      (SITE.coords.longitude - userLoc.longitude) *
+      (TARGET_SITE.coords.longitude - userLoc.longitude) *
       (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    // 45ft Rule (14m)
-    if (dist < 14 || vpsAccuracy < 25) setActiveSite(SITE);
+    if (dist < 14 || vpsAccuracy < 25) setActiveSite(TARGET_SITE);
     else setActiveSite(null);
   }, [userLoc, vpsHeading, vpsAccuracy]);
 
   if (!permission?.granted)
     return (
-      <View style={styles.center}>
-        <Text>Initializing...</Text>
+      <View style={styles.load}>
+        <Text>INIT API...</Text>
       </View>
     );
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#000" }}>
+    <View style={styles.container}>
       <StatusBar hidden />
 
-      {/* LAYER 1: CAMERA */}
-      <CameraView style={StyleSheet.absoluteFill} facing="back" active={true} />
+      {/* LAYER 1: THE CAMERA */}
+      <View style={StyleSheet.absoluteFill}>
+        <CameraView style={{ flex: 1 }} facing="back" active={true} />
+      </View>
 
-      {/* LAYER 2: 3D CANVAS */}
+      {/* LAYER 2: THE 3D GHOST */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
           <ambientLight intensity={1.5} />
@@ -85,49 +87,57 @@ export default function App() {
         </Canvas>
       </View>
 
-      {/* LAYER 3: API STATUS (Small Pill) */}
-      <View style={styles.apiPill} pointerEvents="none">
-        <View
-          style={[
-            styles.dot,
-            { backgroundColor: vpsAccuracy < 25 ? "#00ffff" : "#ff3333" },
-          ]}
-        />
-        <Text style={styles.pillText}>
-          {vpsAccuracy < 25 ? "API LOCKED" : "API SCANNING"}
-        </Text>
-      </View>
-
-      {/* LAYER 4: HUD (The 6 AM Logic) */}
+      {/* LAYER 3: THE HUD (FORCED SIBLING) */}
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
-        target={SITE}
+        target={TARGET_SITE}
         userLoc={userLoc}
         isActive={!!activeSite}
         isApiLocked={vpsAccuracy < 25}
       />
+
+      {/* LAYER 4: THE API PILL */}
+      <View style={styles.apiLabel} pointerEvents="none">
+        <View
+          style={[
+            styles.dot,
+            { backgroundColor: vpsAccuracy < 25 ? "#00ffff" : "#ff0000" },
+          ]}
+        />
+        <Text style={styles.apiText}>
+          {vpsAccuracy < 25 ? "API: LOCKED" : "API: SCANNING"}
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: {
+  container: { flex: 1, backgroundColor: "#000" },
+  load: {
     flex: 1,
+    backgroundColor: "#000",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#000",
   },
-  apiPill: {
+  apiLabel: {
     position: "absolute",
-    top: 60,
+    top: 70,
     left: 20,
+    zIndex: 1000000,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 2,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
-  pillText: { color: "#fff", fontSize: 9, fontWeight: "900", letterSpacing: 1 },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+  apiText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 1.5,
+  },
 });

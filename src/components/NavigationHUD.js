@@ -1,5 +1,7 @@
 import React from "react";
-import { View, StyleSheet, Text } from "react-native";
+import { View, StyleSheet, Text, Dimensions } from "react-native";
+
+const { width, height } = Dimensions.get("window");
 
 export function NavigationHUD({
   vpsHeading,
@@ -11,10 +13,10 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // 6AM Simple Compass Math
+  // COMPASS: Fixed North Logic
   const compassRotation = (360 - magHeading) % 360;
 
-  // Bearing Math
+  // TARGETING MATH
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -29,36 +31,34 @@ export function NavigationHUD({
   const arrowRotation = isOnTarget ? 0 : diff < 0 ? -90 : 90;
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* COMPASS */}
-      <View style={styles.compassContainer}>
-        <View
-          style={[
-            styles.compassRing,
-            { transform: [{ rotate: `${compassRotation}deg` }] },
-          ]}
-        >
-          <Text style={styles.nLabel}>N</Text>
-          <View style={styles.needle} />
-        </View>
+    <View style={styles.nuclearWrapper} pointerEvents="box-none">
+      {/* INDEPENDENT COMPASS */}
+      <View
+        style={[
+          styles.compassBox,
+          { transform: [{ rotate: `${compassRotation}deg` }] },
+        ]}
+      >
+        <Text style={styles.n}>N</Text>
+        <View style={styles.needle} />
       </View>
 
-      {/* TARGETING BOX */}
+      {/* CENTER RETICLE */}
       {!isActive && (
-        <View style={styles.centerBox}>
-          <View style={[styles.reticle, isOnTarget && styles.activeReticle]}>
-            <Text style={styles.siteName}>{target.name}</Text>
+        <View style={styles.centerContainer} pointerEvents="none">
+          <View style={[styles.reticle, isOnTarget && styles.active]}>
+            <Text style={styles.siteTitle}>{target.name}</Text>
             <View
               style={{
                 transform: [{ rotate: `${arrowRotation}deg` }],
-                marginVertical: 15,
+                marginVertical: 20,
               }}
             >
               <Text style={[styles.arrow, isOnTarget && { color: "#00ffff" }]}>
                 ▲
               </Text>
             </View>
-            <Text style={styles.statusText}>
+            <Text style={styles.status}>
               {isOnTarget
                 ? "TARGET LOCKED"
                 : diff < 0
@@ -73,42 +73,53 @@ export function NavigationHUD({
 }
 
 const styles = StyleSheet.create({
-  compassContainer: { position: "absolute", top: 50, right: 25 },
-  compassRing: {
-    width: 55,
-    height: 55,
-    borderRadius: 28,
+  nuclearWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: width,
+    height: height,
+    zIndex: 999999, // Force to very top
+    elevation: 999,
+  },
+  compassBox: {
+    position: "absolute",
+    top: 70,
+    right: 30,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     borderWidth: 2,
     borderColor: "#00ffff",
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     alignItems: "center",
     justifyContent: "center",
   },
-  nLabel: {
+  n: {
     color: "#00ffff",
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "900",
     position: "absolute",
-    top: 2,
+    top: 4,
   },
-  needle: { width: 2, height: 22, backgroundColor: "#ff3333", marginTop: 10 },
-  centerBox: { flex: 1, justifyContent: "center", alignItems: "center" },
+  needle: { width: 2, height: 26, backgroundColor: "#ff3333", marginTop: 10 },
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   reticle: {
-    width: 220,
-    padding: 25,
-    backgroundColor: "rgba(0,0,0,0.8)",
+    width: 250,
+    padding: 35,
+    backgroundColor: "rgba(0,0,0,0.9)",
     borderRadius: 2,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
   },
-  activeReticle: { borderColor: "#00ffff" },
-  siteName: {
+  active: { borderColor: "#00ffff", borderWidth: 2 },
+  siteTitle: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "900",
     letterSpacing: 2,
   },
-  statusText: { color: "#fff", fontSize: 9, fontWeight: "bold", opacity: 0.6 },
-  arrow: { color: "#fff", fontSize: 36 },
+  status: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.7 },
+  arrow: { color: "#fff", fontSize: 48 },
 });
