@@ -13,7 +13,7 @@ const GHOST_SITES = [
     id: "ny-life-building",
     name: "NY LIFE / MSG II",
     year: "1890-1925 (MSG)",
-    coords: { latitude: 40.7427, longitude: -73.9856 }, // The old Garden's center
+    coords: { latitude: 40.7427, longitude: -73.9856 },
     description: "Site of Stanford White's MSG. The Garden Theatre was here.",
   },
 ];
@@ -95,19 +95,23 @@ export default function App() {
         closest = { ...site, dist };
       }
 
-      // Change from 150m to 800m so you can 'see' it from your current spot
+      // TIGHTENING FOR EYE-LEVEL LOCK
       if (dist < 800) {
         const dy = site.coords.latitude - userLoc.latitude;
-        // ... rest of the logic
-
         const dx =
           Math.cos((userLoc.latitude * Math.PI) / 180) *
           (site.coords.longitude - userLoc.longitude);
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
+        // HUMAN EYE ALIGNMENT:
+        // motion.beta ~ 1.57 is perfectly vertical (face level).
+        // We only lock if the phone is held between 60° and 110°.
+        const isLevelWithFace = motion.beta > 1.0 && motion.beta < 2.0;
+
         if (
-          (angleDiff < 25 || angleDiff > 335) &&
+          (angleDiff < 20 || angleDiff > 340) &&
+          isLevelWithFace &&
           (!viewing || dist < viewing.dist)
         ) {
           viewing = { ...site, dist };
@@ -117,7 +121,7 @@ export default function App() {
 
     setNearestSite(closest);
     setActiveSite(viewing);
-  }, [userLoc, heading]);
+  }, [userLoc, heading, motion.beta]); // Added motion.beta to dependency array
 
   if (!permission?.granted)
     return (

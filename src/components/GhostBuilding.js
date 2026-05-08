@@ -7,38 +7,40 @@ export function GhostBuilding({ motion, distance }) {
 
   useFrame(() => {
     if (meshRef.current) {
-      // 1. ABSOLUTE GROUNDING
-      const buildingHeight = 45;
+      // 1. ANCHORING FOR A SKYSCRAPER/STADIUM SCALE
+      // NY Life is ~180m tall, MSG II was ~90m with the tower.
+      const buildingHeight = 120;
       const basePosition = -1.6;
       const centerPosition = basePosition + buildingHeight / 2;
 
-      // 2. STABILIZED HORIZON
-      // Prevents the model from "crunching" into the ground when you tilt
+      // 2. HORIZON STABILIZATION
+      // We clamp the pitch so the building doesn't "slide" down the street
       const pitchOffset = Math.max(
-        Math.min((motion.beta || 0) - 1.2, 0.4),
-        -0.4,
+        Math.min((motion.beta || 0) - 1.57, 0.3),
+        -0.3,
       );
+
       meshRef.current.position.set(
         0,
-        centerPosition - pitchOffset * 10,
+        centerPosition - pitchOffset * 20,
         -distance,
       );
 
-      // 3. VISUAL FADE
-      // Fades out if you look too far down or up
       if (meshRef.current.material) {
-        const pitch = motion.beta || 0;
-        const visibility = Math.max(0, Math.min(1, (pitch - 0.6) * 2));
-        const flicker = 0.2 + Math.sin(Date.now() * 0.002) * 0.05;
-        meshRef.current.material.opacity = flicker * visibility;
+        // Only show if looking toward the horizon (motion.beta ~ 1.57)
+        const visibility = Math.max(
+          0,
+          Math.min(1, 1 - Math.abs(motion.beta - 1.57)),
+        );
+        meshRef.current.material.opacity = 0.4 * visibility;
       }
     }
   });
 
   return (
     <mesh ref={meshRef}>
-      {/* Madison Square Garden II was huge: approx 60m wide, 130m deep, and the tower was 90m */}
-      <boxGeometry args={[60, 90, 130]} />
+      {/* MSG II Footprint: Massive 60m x 130m block */}
+      <boxGeometry args={[80, 120, 150]} />
       <meshBasicMaterial
         color="#00ffff"
         wireframe={true}
