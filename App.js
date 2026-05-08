@@ -9,40 +9,18 @@ import { GhostBuilding } from "./src/components/GhostBuilding";
 
 const GHOST_SITES = [
   {
-    id: "astor",
-    name: "THE ASTOR LIBRARY",
-    year: "1854-1911",
-    coords: { latitude: 40.7292, longitude: -73.9921 },
-    description:
-      "Lafayette & 4th. Now the Public Theater. Historic stone facade.",
-  },
-  {
-    id: "singer",
-    name: "SINGER BUILDING",
-    year: "1908-1968",
-    coords: { latitude: 40.7093, longitude: -74.0116 },
-    description: "Liberty St & Broadway. Once the tallest building on earth.",
-  },
-  {
-    id: "world",
-    name: "NY WORLD BUILDING",
-    year: "1890-1955",
-    coords: { latitude: 40.7121, longitude: -74.0048 },
-    description: "Park Row. Famous for its golden dome and newspaper history.",
-  },
-  {
-    id: "msg2",
-    name: "MADISON SQ GARDEN II",
-    year: "1890-1925",
-    coords: { latitude: 40.7417, longitude: -73.9872 },
-    description: "Madison Ave & 26th St. Designed by Stanford White.",
-  },
-  {
     id: "hippo",
     name: "THE HIPPODROME",
     year: "1905-1939",
     coords: { latitude: 40.7554, longitude: -73.9828 },
     description: "6th Ave & 43rd St. A legendary theatre for spectacles.",
+  },
+  {
+    id: "astor",
+    name: "THE ASTOR LIBRARY",
+    year: "1854-1911",
+    coords: { latitude: 40.7292, longitude: -73.9921 },
+    description: "Lafayette & 4th. Now the Public Theater.",
   },
 ];
 
@@ -67,11 +45,9 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Force permission check on mount
-    if (permission && !permission.granted) {
-      requestPermission();
-    }
+    if (permission && !permission.granted) requestPermission();
 
+    // SENSOR DAMPING (Fixes the Jitter)
     Magnetometer.setUpdateInterval(16);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(-data.x, data.y) * (180 / Math.PI);
@@ -80,7 +56,7 @@ export default function App() {
         let diff = angle + 12.0 - prev;
         if (diff > 180) diff -= 360;
         if (diff < -180) diff += 360;
-        return prev + diff * 0.15;
+        return prev + diff * 0.12;
       });
     });
 
@@ -93,7 +69,10 @@ export default function App() {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.High, distanceInterval: 1 },
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 1,
+          },
           (loc) => setUserLoc(loc.coords),
         );
       }
@@ -107,7 +86,6 @@ export default function App() {
 
   useEffect(() => {
     if (!userLoc) return;
-
     let closest = null;
     let minFinishDist = Infinity;
     let viewing = null;
@@ -119,7 +97,6 @@ export default function App() {
         site.coords.latitude,
         site.coords.longitude,
       );
-
       if (dist < minFinishDist) {
         minFinishDist = dist;
         closest = { ...site, dist };
@@ -132,7 +109,7 @@ export default function App() {
       const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
       const angleDiff = Math.abs(angleToSite - heading);
 
-      if (angleDiff < 25 || angleDiff > 335) {
+      if (angleDiff < 30 || angleDiff > 330) {
         viewing = { ...site, dist };
       }
     });
@@ -141,28 +118,25 @@ export default function App() {
     setActiveSite(viewing);
   }, [userLoc, heading]);
 
-  if (!permission?.granted) {
+  if (!permission?.granted)
     return (
       <View style={styles.center}>
-        <Text style={{ color: "white" }}>Waiting for Camera Permission...</Text>
+        <Text>Grant Camera Access...</Text>
       </View>
     );
-  }
 
   return (
     <View style={styles.container}>
-      {/* LAYER 1: ACTUAL CAMERA */}
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* LAYER 2: 3D GHOST OVERLAY */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Canvas
           gl={{ alpha: true, antialias: false }}
           camera={{ fov: 45, near: 0.1, far: 10000 }}
         >
-          <ambientLight intensity={2.5} />
+          <ambientLight intensity={1.5} />
           {activeSite && (
             <GhostBuilding
               heading={heading}
@@ -173,10 +147,8 @@ export default function App() {
         </Canvas>
       </View>
 
-      {/* LAYER 3: HUD UI */}
       <View style={styles.hud} pointerEvents="none">
         <Text style={styles.brand}>GHOST MAPPING // NYC</Text>
-
         <View style={styles.radarBox}>
           <Text style={styles.label}>NEAREST SIGNAL:</Text>
           <Text style={styles.value}>
