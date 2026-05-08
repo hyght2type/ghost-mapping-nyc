@@ -62,7 +62,7 @@ export default function App() {
         let diff = angle + 12.0 - prev;
         if (diff > 180) diff -= 360;
         if (diff < -180) diff += 360;
-        return prev + diff * 0.12;
+        return prev + diff * 0.15; // Slightly faster for responsiveness
       });
     });
 
@@ -108,7 +108,8 @@ export default function App() {
         closest = { ...site, dist };
       }
 
-      if (dist < 500) {
+      if (dist < 400) {
+        // Tighter range for better city performance
         const dy = site.coords.latitude - userLoc.latitude;
         const dx =
           Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -116,9 +117,9 @@ export default function App() {
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
-        // Locked priority: If looking at a site, prefer the closest one
+        // Locked priority logic
         if (
-          (angleDiff < 30 || angleDiff > 330) &&
+          (angleDiff < 25 || angleDiff > 335) &&
           (!viewing || dist < viewing.dist)
         ) {
           viewing = { ...site, dist };

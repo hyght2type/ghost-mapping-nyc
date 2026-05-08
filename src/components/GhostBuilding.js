@@ -7,12 +7,11 @@ export function GhostBuilding({ motion, distance }) {
 
   useFrame(() => {
     if (meshRef.current) {
-      // THE ANCHOR FIX:
-      // Half the height (22.5m) plus the ground offset (-1.6m)
+      // 1. ANCHORING LOGIC
       const buildingHeight = 45;
       const groundLevel = -1.6 + buildingHeight / 2;
 
-      // TILT PROTECTION: Prevents the building from flying away when looking down
+      // TILT PROTECTION
       const pitchOffset = Math.max(
         Math.min((motion.beta || 0) - 1.2, 0.4),
         -0.4,
@@ -24,10 +23,12 @@ export function GhostBuilding({ motion, distance }) {
         -distance,
       );
 
-      // SPECTRAL FLICKER
+      // 2. SKY-FADE LOGIC (The Reset)
+      // If motion.beta goes toward 0 (pointing at sky), we fade the building out
       if (meshRef.current.material) {
-        meshRef.current.material.opacity =
-          0.25 + Math.sin(Date.now() * 0.002) * 0.1;
+        const skyLimit = Math.max(0, Math.min(1, motion.beta - 0.5));
+        const flicker = 0.25 + Math.sin(Date.now() * 0.002) * 0.1;
+        meshRef.current.material.opacity = flicker * skyLimit;
       }
     }
   });
