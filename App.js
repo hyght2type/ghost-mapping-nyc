@@ -12,15 +12,15 @@ const GHOST_SITES = [
     id: "st-stephen-front",
     name: "ST. STEPHEN (FRONT)",
     year: "1854-PRESENT",
-    coords: { latitude: 40.7424, longitude: -73.9806 }, // 28th St Entrance
-    description: "Our Lady of the Scapular. Known for the Brumidi murals.",
+    coords: { latitude: 40.7424, longitude: -73.9806 },
+    description: "28th St Entrance. Famous for its historic Brumidi murals.",
   },
   {
     id: "st-stephen-rear",
     name: "ST. STEPHEN (REAR)",
     year: "1854-PRESENT",
-    coords: { latitude: 40.7431, longitude: -73.9801 }, // 29th St Facade
-    description: "The Gothic rear facade of the historic St. Stephen's.",
+    coords: { latitude: 40.7431, longitude: -73.9801 },
+    description: "29th St Facade. The Gothic rear of this neighborhood gem.",
   },
   {
     id: "hippo",
@@ -28,6 +28,13 @@ const GHOST_SITES = [
     year: "1905-1939",
     coords: { latitude: 40.7554, longitude: -73.9828 },
     description: "6th Ave & 43rd St. A legendary theatre for spectacles.",
+  },
+  {
+    id: "astor",
+    name: "THE ASTOR LIBRARY",
+    year: "1854-1911",
+    coords: { latitude: 40.7292, longitude: -73.9921 },
+    description: "Lafayette & 4th. Now the Public Theater.",
   },
 ];
 
@@ -103,20 +110,26 @@ export default function App() {
         site.coords.latitude,
         site.coords.longitude,
       );
+
+      // Radar always shows the closest point
       if (dist < minFinishDist) {
         minFinishDist = dist;
         closest = { ...site, dist };
       }
 
-      const dy = site.coords.latitude - userLoc.latitude;
-      const dx =
-        Math.cos((userLoc.latitude * Math.PI) / 180) *
-        (site.coords.longitude - userLoc.longitude);
-      const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
-      const angleDiff = Math.abs(angleToSite - heading);
+      // FIX: Only lock onto buildings within 500m of your feet
+      if (dist < 500) {
+        const dy = site.coords.latitude - userLoc.latitude;
+        const dx =
+          Math.cos((userLoc.latitude * Math.PI) / 180) *
+          (site.coords.longitude - userLoc.longitude);
+        const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
+        const angleDiff = Math.abs(angleToSite - heading);
 
-      if (angleDiff < 30 || angleDiff > 330) {
-        viewing = { ...site, dist };
+        // Lock range of 30 degrees
+        if (angleDiff < 30 || angleDiff > 330) {
+          viewing = { ...site, dist };
+        }
       }
     });
 
@@ -143,6 +156,7 @@ export default function App() {
           camera={{ fov: 45, near: 0.1, far: 10000 }}
         >
           <ambientLight intensity={1.5} />
+          {/* Only render the 3D model if it's the active neighborhood site */}
           {activeSite && (
             <GhostBuilding
               heading={heading}
@@ -155,6 +169,7 @@ export default function App() {
 
       <View style={styles.hud} pointerEvents="none">
         <Text style={styles.brand}>GHOST MAPPING // NYC</Text>
+
         <View style={styles.radarBox}>
           <Text style={styles.label}>NEAREST SIGNAL:</Text>
           <Text style={styles.value}>
@@ -165,6 +180,7 @@ export default function App() {
           </Text>
         </View>
 
+        {/* HUD only shows Target Locked if it matches the active local site */}
         {activeSite && (
           <View style={styles.lockBox}>
             <Text style={styles.lockLabel}>TARGET LOCKED</Text>
