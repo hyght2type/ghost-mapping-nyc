@@ -1,43 +1,34 @@
-import React, { useRef } from "react";
-import { useFrame } from "@react-three/fiber/native";
-import * as THREE from "three";
+\import React, { useRef } from 'react';
+import { useFrame } from '@react-three/fiber/native';
+import * as THREE from 'three';
 
 export function GhostBuilding({ motion, distance }) {
   const meshRef = useRef();
 
   useFrame(() => {
     if (meshRef.current) {
-      // 1. DYNAMIC GROUNDING WITH TILT PROTECTION
-      const groundLevel = -1.6;
-      // Limits how much looking down 'drags' the building into your feet
-      const pitchOffset = Math.max(
-        Math.min((motion.beta || 0) - 1.2, 0.4),
-        -0.4,
-      );
-
-      meshRef.current.position.set(
-        0,
-        groundLevel - pitchOffset * 10,
-        -distance,
-      );
-
-      // 2. SPECTRAL ANIMATION
+      // ANCHORING: Set bottom to floor
+      const buildingHeight = 45;
+      const groundLevel = -1.6 + (buildingHeight / 2); 
+      
+      const pitchOffset = Math.max(Math.min((motion.beta || 0) - 1.2, 0.4), -0.4); 
+      
+      meshRef.current.position.set(0, groundLevel - (pitchOffset * 10), -distance);
+      
       if (meshRef.current.material) {
-        meshRef.current.material.opacity =
-          0.25 + Math.sin(Date.now() * 0.002) * 0.1;
+        meshRef.current.material.opacity = 0.25 + Math.sin(Date.now() * 0.002) * 0.1;
       }
     }
   });
 
   return (
     <mesh ref={meshRef}>
-      {/* 3. SCALE: Neo-Gothic Church Dimensions */}
-      <boxGeometry args={[35, 45, 40]} />
-      <meshBasicMaterial
-        color="#00ffff"
-        wireframe={true}
-        transparent={true}
-        opacity={0.3}
+      <boxGeometry args={[25, 45, 30]} /> 
+      <meshBasicMaterial 
+        color="#00ffff" 
+        wireframe={true} 
+        transparent={true} 
+        opacity={0.3} 
       />
     </mesh>
   );

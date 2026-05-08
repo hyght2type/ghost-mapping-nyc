@@ -29,13 +29,6 @@ const GHOST_SITES = [
     coords: { latitude: 40.7554, longitude: -73.9828 },
     description: "6th Ave & 43rd St. A legendary theatre for spectacles.",
   },
-  {
-    id: "astor",
-    name: "THE ASTOR LIBRARY",
-    year: "1854-1911",
-    coords: { latitude: 40.7292, longitude: -73.9921 },
-    description: "Lafayette & 4th. Now the Public Theater.",
-  },
 ];
 
 export default function App() {
@@ -123,7 +116,11 @@ export default function App() {
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
-        if (angleDiff < 30 || angleDiff > 330) {
+        // PRIORITIZE NEAREST: Only switch the lock if the viewing site is the closest one
+        if (
+          (angleDiff < 30 || angleDiff > 330) &&
+          (!viewing || dist < viewing.dist)
+        ) {
           viewing = { ...site, dist };
         }
       }
