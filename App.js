@@ -6,6 +6,7 @@ import { DeviceMotion, Magnetometer } from "expo-sensors";
 import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
+import { NavigationArrows } from "./src/components/NavigationArrows";
 
 const GHOST_SITES = [
   {
@@ -13,7 +14,7 @@ const GHOST_SITES = [
     name: "ST. STEPHEN (FRONT)",
     year: "1854-PRESENT",
     coords: { latitude: 40.7424, longitude: -73.9806 },
-    description: "28th St Entrance. Famous for its historic Brumidi murals.",
+    description: "28th St Entrance. Neo-Gothic landmark.",
   },
 ];
 
@@ -94,8 +95,7 @@ export default function App() {
         closest = { ...site, dist };
       }
 
-      // STRICTOR LOCK: Only engage if within 150m and pointing within 20 degrees
-      if (dist < 150) {
+      if (dist < 300) {
         const dy = site.coords.latitude - userLoc.latitude;
         const dx =
           Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -103,7 +103,10 @@ export default function App() {
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
-        if (angleDiff < 20 || angleDiff > 340) {
+        if (
+          (angleDiff < 25 || angleDiff > 335) &&
+          (!viewing || dist < viewing.dist)
+        ) {
           viewing = { ...site, dist };
         }
       }
@@ -141,6 +144,13 @@ export default function App() {
           )}
         </Canvas>
       </View>
+
+      <NavigationArrows
+        currentHeading={heading}
+        targetCoords={nearestSite?.coords}
+        userLoc={userLoc}
+        isActive={!!activeSite}
+      />
 
       <View style={styles.hud} pointerEvents="none">
         <Text style={styles.brand}>GHOST MAPPING // NYC</Text>
