@@ -13,21 +13,14 @@ const GHOST_SITES = [
     name: "ST. STEPHEN (FRONT)",
     year: "1854-PRESENT",
     coords: { latitude: 40.7424, longitude: -73.9806 },
-    description: "28th St Entrance. Famous for its historic Brumidi murals.",
+    description: "28th St Entrance. Neo-Gothic landmark.",
   },
   {
     id: "st-stephen-rear",
     name: "ST. STEPHEN (REAR)",
     year: "1854-PRESENT",
     coords: { latitude: 40.7431, longitude: -73.9801 },
-    description: "29th St Facade. The Gothic rear of this neighborhood gem.",
-  },
-  {
-    id: "hippo",
-    name: "THE HIPPODROME",
-    year: "1905-1939",
-    coords: { latitude: 40.7554, longitude: -73.9828 },
-    description: "6th Ave & 43rd St. A legendary theatre for spectacles.",
+    description: "29th St Facade. Historic neighborhood church.",
   },
 ];
 
@@ -62,7 +55,7 @@ export default function App() {
         let diff = angle + 12.0 - prev;
         if (diff > 180) diff -= 360;
         if (diff < -180) diff += 360;
-        return prev + diff * 0.15; // Slightly faster for responsiveness
+        return prev + diff * 0.15;
       });
     });
 
@@ -108,8 +101,7 @@ export default function App() {
         closest = { ...site, dist };
       }
 
-      if (dist < 400) {
-        // Tighter range for better city performance
+      if (dist < 300) {
         const dy = site.coords.latitude - userLoc.latitude;
         const dx =
           Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -117,7 +109,6 @@ export default function App() {
         const angleToSite = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
         const angleDiff = Math.abs(angleToSite - heading);
 
-        // Locked priority logic
         if (
           (angleDiff < 25 || angleDiff > 335) &&
           (!viewing || dist < viewing.dist)

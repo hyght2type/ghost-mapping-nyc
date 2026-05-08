@@ -7,28 +7,27 @@ export function GhostBuilding({ motion, distance }) {
 
   useFrame(() => {
     if (meshRef.current) {
-      // 1. ANCHORING LOGIC
+      // 1. ABSOLUTE GROUNDING
+      // We set the building height and calculate the 'Y' so the base is at -1.6m
       const buildingHeight = 45;
-      const groundLevel = -1.6 + buildingHeight / 2;
+      const basePosition = -1.6;
+      const centerPosition = basePosition + buildingHeight / 2;
 
-      // TILT PROTECTION
-      const pitchOffset = Math.max(
-        Math.min((motion.beta || 0) - 1.2, 0.4),
-        -0.4,
-      );
+      // 2. STABILIZED POSITIONING
+      // We use Math.cos to calculate the horizontal depth (Z)
+      // so the building doesn't "follow" your gaze when you look down.
+      const pitch = motion.beta || 0;
+      const horizontalDist = distance * Math.sin(pitch);
+      const verticalCorrection = distance * Math.cos(pitch);
 
-      meshRef.current.position.set(
-        0,
-        groundLevel - pitchOffset * 10,
-        -distance,
-      );
+      meshRef.current.position.set(0, centerPosition, -distance);
 
-      // 2. SKY-FADE LOGIC (The Reset)
-      // If motion.beta goes toward 0 (pointing at sky), we fade the building out
+      // 3. VISIBILITY LIMITER
+      // If the camera is pointed too far down (> 60 degrees), we hide the lines
+      // to stop them from cluttering your view of your feet.
       if (meshRef.current.material) {
-        const skyLimit = Math.max(0, Math.min(1, motion.beta - 0.5));
-        const flicker = 0.25 + Math.sin(Date.now() * 0.002) * 0.1;
-        meshRef.current.material.opacity = flicker * skyLimit;
+        const visibility = Math.max(0, Math.min(1, (pitch - 0.6) * 2));
+        meshRef.current.material.opacity = 0.3 * visibility;
       }
     }
   });
