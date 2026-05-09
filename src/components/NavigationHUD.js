@@ -13,10 +13,10 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // COMPASS: Fixed North Logic
+  // Compass: Simple, non-inverted rotation
   const compassRotation = (360 - magHeading) % 360;
 
-  // TARGETING MATH
+  // Bearing Calculation
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -31,34 +31,36 @@ export function NavigationHUD({
   const arrowRotation = isOnTarget ? 0 : diff < 0 ? -90 : 90;
 
   return (
-    <View style={styles.nuclearWrapper} pointerEvents="box-none">
-      {/* INDEPENDENT COMPASS */}
-      <View
-        style={[
-          styles.compassBox,
-          { transform: [{ rotate: `${compassRotation}deg` }] },
-        ]}
-      >
-        <Text style={styles.n}>N</Text>
-        <View style={styles.needle} />
+    <View style={styles.overlay} pointerEvents="box-none">
+      {/* COMPASS */}
+      <View style={styles.compassContainer}>
+        <View
+          style={[
+            styles.ring,
+            { transform: [{ rotate: `${compassRotation}deg` }] },
+          ]}
+        >
+          <Text style={styles.n}>N</Text>
+          <View style={styles.needle} />
+        </View>
       </View>
 
-      {/* CENTER RETICLE */}
+      {/* TARGET BOX */}
       {!isActive && (
-        <View style={styles.centerContainer} pointerEvents="none">
-          <View style={[styles.reticle, isOnTarget && styles.active]}>
-            <Text style={styles.siteTitle}>{target.name}</Text>
+        <View style={styles.center} pointerEvents="none">
+          <View style={[styles.box, isOnTarget && styles.boxActive]}>
+            <Text style={styles.title}>{target.name}</Text>
             <View
               style={{
                 transform: [{ rotate: `${arrowRotation}deg` }],
-                marginVertical: 20,
+                marginVertical: 15,
               }}
             >
               <Text style={[styles.arrow, isOnTarget && { color: "#00ffff" }]}>
                 ▲
               </Text>
             </View>
-            <Text style={styles.status}>
+            <Text style={styles.instr}>
               {isOnTarget
                 ? "TARGET LOCKED"
                 : diff < 0
@@ -73,25 +75,15 @@ export function NavigationHUD({
 }
 
 const styles = StyleSheet.create({
-  nuclearWrapper: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: width,
-    height: height,
-    zIndex: 999999, // Force to very top
-    elevation: 999,
-  },
-  compassBox: {
-    position: "absolute",
-    top: 70,
-    right: 30,
+  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 1000 },
+  compassContainer: { position: "absolute", top: 60, right: 30 },
+  ring: {
     width: 60,
     height: 60,
     borderRadius: 30,
     borderWidth: 2,
     borderColor: "#00ffff",
-    backgroundColor: "rgba(0,0,0,0.85)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -103,23 +95,18 @@ const styles = StyleSheet.create({
     top: 4,
   },
   needle: { width: 2, height: 26, backgroundColor: "#ff3333", marginTop: 10 },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  reticle: {
-    width: 250,
-    padding: 35,
-    backgroundColor: "rgba(0,0,0,0.9)",
-    borderRadius: 2,
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  box: {
+    width: 240,
+    padding: 30,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
   },
-  active: { borderColor: "#00ffff", borderWidth: 2 },
-  siteTitle: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
-  status: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.7 },
-  arrow: { color: "#fff", fontSize: 48 },
+  boxActive: { borderColor: "#00ffff" },
+  title: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 2 },
+  instr: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.7 },
+  arrow: { color: "#fff", fontSize: 42 },
 });
