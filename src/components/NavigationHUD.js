@@ -12,10 +12,11 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // COMPASS: 0 is North
-  const compassRotation = (360 - magHeading) % 360;
+  // HEADING-UP COMPASS LOGIC:
+  // We rotate the entire ring so 'N' reflects its real-world position.
+  const ringRotation = (360 - magHeading) % 360;
 
-  // TARGETING: Angle to the building
+  // TARGETING LOGIC (API-driven)
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -26,40 +27,47 @@ export function NavigationHUD({
   if (diff > 180) diff -= 360;
   if (diff < -180) diff += 360;
 
-  // TARGET LOCK: Up arrow when facing building
   const isOnTarget = isApiLocked || Math.abs(diff) < 25;
   const arrowRotation = isOnTarget ? 0 : diff < 0 ? -90 : 90;
 
   return (
-    <View style={styles.masterHUD} pointerEvents="box-none">
-      {/* COMPASS (Top Right) */}
-      <View style={styles.compassPos}>
+    <View style={styles.hudWrapper} pointerEvents="box-none">
+      {/* HEADING-UP COMPASS */}
+      <View style={styles.compassPosition}>
         <View
           style={[
             styles.ring,
-            { transform: [{ rotate: `${compassRotation}deg` }] },
+            { transform: [{ rotate: `${ringRotation}deg` }] },
           ]}
         >
-          <Text style={styles.n}>N</Text>
-          <View style={styles.needle} />
+          {/* North Marker is attached to the rotating ring */}
+          <View style={styles.northMarker}>
+            <Text style={styles.nText}>N</Text>
+          </View>
         </View>
+        {/* The Indicator Needle is FIXED at the top of the phone */}
+        <View style={styles.fixedIndicator} />
       </View>
 
-      {/* CENTER RETICLE */}
+      {/* CENTER TARGETING BOX */}
       <View style={styles.centerContainer} pointerEvents="none">
-        <View style={[styles.box, isOnTarget && styles.boxActive]}>
-          <Text style={styles.title}>{target.name}</Text>
+        <View style={[styles.targetBox, isOnTarget && styles.targetBoxActive]}>
+          <Text style={styles.buildingName}>{target.name}</Text>
+
           <View
             style={{
               transform: [{ rotate: `${arrowRotation}deg` }],
               marginVertical: 20,
             }}
           >
-            <Text style={[styles.arrow, isOnTarget && { color: "#00ffff" }]}>
+            <Text
+              style={[styles.arrowIcon, isOnTarget && { color: "#00ffff" }]}
+            >
               ▲
             </Text>
           </View>
-          <Text style={styles.instr}>
+
+          <Text style={styles.instructionText}>
             {isOnTarget
               ? "TARGET LOCKED"
               : diff < 0
@@ -73,7 +81,7 @@ export function NavigationHUD({
 }
 
 const styles = StyleSheet.create({
-  masterHUD: {
+  hudWrapper: {
     position: "absolute",
     width: width,
     height: height,
@@ -81,37 +89,76 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 2000,
   },
-  compassPos: { position: "absolute", top: 60, right: 30 },
+  compassPosition: {
+    position: "absolute",
+    top: 60,
+    right: 30,
+    width: 70,
+    height: 70,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   ring: {
     width: 60,
     height: 60,
     borderRadius: 30,
     borderWidth: 2,
     borderColor: "#00ffff",
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.7)",
     alignItems: "center",
     justifyContent: "center",
   },
-  n: {
-    color: "#00ffff",
-    fontSize: 12,
-    fontWeight: "900",
+  northMarker: {
     position: "absolute",
-    top: 4,
+    top: 2,
+    alignItems: "center",
   },
-  needle: { width: 2, height: 26, backgroundColor: "#ff3333", marginTop: 10 },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  box: {
+  nText: {
+    color: "#00ffff",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+  fixedIndicator: {
+    position: "absolute",
+    top: -5,
+    width: 4,
+    height: 15,
+    backgroundColor: "#ff3333",
+    borderRadius: 2,
+    zIndex: 2001,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  targetBox: {
     width: 240,
     padding: 30,
-    backgroundColor: "rgba(0,0,0,0.9)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     borderRadius: 4,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
   },
-  boxActive: { borderColor: "#00ffff" },
-  title: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 2 },
-  instr: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.7 },
-  arrow: { color: "#fff", fontSize: 44 },
+  targetBoxActive: {
+    borderColor: "#00ffff",
+    backgroundColor: "rgba(0,255,255,0.1)",
+  },
+  buildingName: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+  instructionText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+    opacity: 0.8,
+  },
+  arrowIcon: {
+    color: "#fff",
+    fontSize: 48,
+  },
 });
