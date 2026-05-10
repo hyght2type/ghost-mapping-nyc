@@ -8,9 +8,6 @@ import * as Location from "expo-location";
 import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
-/** * THE GHOST REGISTRY
- * Expanded to include Grand Central Terminal.
- */
 const GHOST_SITES = [
   {
     id: "ny-life",
@@ -50,9 +47,10 @@ export default function App() {
   const lastHeading = useRef(0);
 
   useEffect(() => {
-    if (permission && !permission.granted) requestPermission();
+    if (permission && !permission.granted && permission.canAskAgain) {
+      requestPermission();
+    }
 
-    // GOLDEN SENSOR LOGIC (LOCKED - ATAN2 Z, -X)
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
@@ -82,7 +80,7 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // PROXIMITY ENGINE
+  // PROXIMITY ENGINE - Fixed Variable Reference
   useEffect(() => {
     if (!userLoc) return;
 
@@ -94,21 +92,23 @@ export default function App() {
       const dx =
         (site.coords.longitude - userLoc.longitude) *
         (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < minDistance) {
-        minDistance = distance;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDistance) {
+        minDistance = dist;
         closest = site;
       }
     });
 
     setActiveTarget(closest);
-    setDistanceToTarget(distance);
+    setDistanceToTarget(minDistance); // Use the correct local variable 'dist'
   }, [userLoc]);
 
-  if (!permission?.granted)
+  // Safety return to prevent black screen while waiting for permission
+  if (!permission) return <View style={styles.load} />;
+  if (!permission.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>CALIBRATING REGISTRY...</Text>
+        <Text style={styles.loadText}>CAMERA PERMISSION REQUIRED</Text>
       </View>
     );
 
@@ -120,7 +120,6 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 3D CANVAS */}
       {vpsAccuracy < 100 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -130,7 +129,6 @@ export default function App() {
         </View>
       )}
 
-      {/* INFO PANEL */}
       {distanceToTarget < 50 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
