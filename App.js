@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { StyleSheet, View, Text, StatusBar, Animated } from "react-native";
+import { StyleSheet, View, Text, StatusBar } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
 import { Magnetometer } from "expo-sensors";
@@ -42,9 +42,8 @@ export default function App() {
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
-  const [distanceToTarget, setDistanceToTarget] = useState(100);
+  const [distanceToTarget, setDistanceToTarget] = useState(5);
 
-  // WAYFINDER STATE (Isolated from North)
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState("SCANNING");
 
@@ -57,14 +56,12 @@ export default function App() {
 
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
-      // 1. GOLDEN NORTH COMPASS (Strict Mapping)
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
       let trueHeading = (angle + 360 + 13.0) % 360;
       lastHeadingRef.current = trueHeading;
       setMagHeading(trueHeading);
 
-      // 2. WAYFINDER DAMPING (The "Water" feel - Isolated)
-      const wayfinderDamping = 0.88;
+      const wayfinderDamping = 0.85;
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
         trueHeading * (1 - wayfinderDamping);
@@ -93,23 +90,21 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // Calculate Bearing & Distance
     const dy = activeTarget.coords.latitude - userLoc.latitude;
     const dx =
       Math.cos((userLoc.latitude * Math.PI) / 180) *
       (activeTarget.coords.longitude - userLoc.longitude);
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    // Relative rotation for the floating Wayfinder disc
     let relativeHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relativeHeading);
 
-    // Turn-by-Turn Logic
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
+    // Hyper-sensitive targeting for 15ft range
+    if (Math.abs(diff) < 35) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
@@ -117,7 +112,8 @@ export default function App() {
     const distX =
       (activeTarget.coords.longitude - userLoc.longitude) *
       (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
-    setDistanceToTarget(Math.sqrt(distX * distX + distY * distY));
+    const realDist = Math.sqrt(distX * distX + distY * distY);
+    setDistanceToTarget(realDist);
   }, [userLoc, magHeading]);
 
   if (!permission?.granted)
@@ -127,7 +123,7 @@ export default function App() {
       </View>
     );
 
-  const isVpsLocked = vpsAccuracy < 45;
+  const isLocked = Math.abs(distanceToTarget) < 50;
 
   return (
     <View style={styles.container}>
@@ -136,39 +132,51 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 3D AR LAYER - Pinned to ground level */}
-      {vpsAccuracy < 90 && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
-            <ambientLight intensity={1.5} />
-            {/* Clamp distance so lines don't fly past you when you are 10ft away */}
-            <GhostBuilding distance={Math.max(4, distanceToTarget)} />
-          </Canvas>
-        </View>
-      )}
+      {/* 1. NEAREST SIGNAL BAR (TOP LEFT) */}
+      <View style={styles.headerBar}>
+        <Text style={styles.headerLabel}>GHOST MAPPING // NYC</Text>
+        <Text style={styles.signalSub}>NEAREST SIGNAL:</Text>
+        <Text style={styles.signalName}>{activeTarget.name}</Text>
+        <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
+      </View>
 
-      {/* FIXED INFO BOX: Forced visible when close (under 40m) */}
-      {distanceToTarget < 40 && (
-        <View style={styles.infoPanel} pointerEvents="none">
-          <Text style={styles.infoTitle}>{activeTarget.name}</Text>
-          <Text style={styles.infoMeta}>
-            {activeTarget.year} | {activeTarget.architect}
+      {/* 2. GOLDEN COMPASS (TOP RIGHT) */}
+      <View style={styles.compassPosition}>
+        <View
+          style={[
+            styles.ring,
+            { transform: [{ rotate: `${(360 - magHeading) % 360}deg` }] },
+          ]}
+        >
+          <View style={styles.northMarker}>
+            <Text style={styles.nText}>N</Text>
+          </View>
+        </View>
+        <View style={styles.fixedIndicator} />
+      </View>
+
+      {/* 3. INFO/TARGET BOX (CENTER) */}
+      <View style={styles.centerContainer} pointerEvents="none">
+        <View
+          style={[
+            styles.targetBox,
+            turnInstruction === "TARGET LOCKED" && styles.targetBoxActive,
+          ]}
+        >
+          <Text style={styles.boxName}>{activeTarget.name}</Text>
+          <Text
+            style={[
+              styles.boxArrow,
+              turnInstruction === "TARGET LOCKED" && { color: "#00ffff" },
+            ]}
+          >
+            ▲
           </Text>
-          <Text style={styles.infoFact}>{activeTarget.fact}</Text>
+          <Text style={styles.boxStatus}>{turnInstruction}</Text>
         </View>
-      )}
+      </View>
 
-      {/* GOLDEN HUD (North Compass) */}
-      <NavigationHUD
-        vpsHeading={vpsHeading}
-        magHeading={magHeading}
-        target={activeTarget}
-        userLoc={userLoc}
-        isApiLocked={isVpsLocked}
-        distance={distanceToTarget}
-      />
-
-      {/* FLOATING WAYFINDER (Target Compass) */}
+      {/* 4. FLOATING WAYFINDER & TURN PILL (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -182,15 +190,23 @@ export default function App() {
             <Text style={styles.targetLabel}>TARGET</Text>
           </View>
         </View>
-        <View
-          style={[styles.instructionPill, isVpsLocked && styles.pillActive]}
-        >
+        <View style={styles.instructionPill}>
           <Text style={styles.instructionText}>{turnInstruction}</Text>
           <Text style={styles.distanceText}>
             {Math.round(distanceToTarget)}m to entrance
           </Text>
         </View>
       </View>
+
+      {/* 3D AR CANVAS (ONLY WHEN FACING TARGET) */}
+      {turnInstruction === "TARGET LOCKED" && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
+            <ambientLight intensity={1.5} />
+            <GhostBuilding distance={Math.max(5, distanceToTarget)} />
+          </Canvas>
+        </View>
+      )}
     </View>
   );
 }
@@ -210,46 +226,95 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // INFO BOX
-  infoPanel: {
+  // TOP LEFT BAR
+  headerBar: {
     position: "absolute",
-    bottom: 380,
-    alignSelf: "center",
-    width: "85%",
-    backgroundColor: "rgba(0,0,0,0.95)",
-    padding: 20,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: "#00ffff",
-    zIndex: 6000,
+    top: 50,
+    left: 20,
+    width: "65%",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    padding: 15,
+    borderLeftWidth: 4,
+    borderLeftColor: "#fff",
+    zIndex: 10,
   },
-  infoTitle: {
-    color: "#00ffff",
-    fontSize: 16,
+  headerLabel: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 9,
     fontWeight: "900",
+    letterSpacing: 2,
     marginBottom: 5,
   },
-  infoMeta: {
-    color: "#fff",
-    fontSize: 10,
-    opacity: 0.6,
-    marginBottom: 10,
-    letterSpacing: 1,
+  signalSub: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 9,
+    fontWeight: "bold",
   },
-  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
+  signalName: { color: "#fff", fontSize: 18, fontWeight: "900" },
+  signalDist: { color: "#fff", fontSize: 22, fontWeight: "300" },
 
-  // WAYFINDER UI
+  // TOP RIGHT COMPASS
+  compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
+  ring: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "#00ffff",
+    backgroundColor: "rgba(0,0,0,0.8)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  northMarker: { position: "absolute", top: 2 },
+  nText: { color: "#00ffff", fontSize: 14, fontWeight: "900" },
+  fixedIndicator: {
+    position: "absolute",
+    top: -4,
+    left: 28,
+    width: 4,
+    height: 12,
+    backgroundColor: "#ff3333",
+    borderRadius: 2,
+  },
+
+  // CENTER BOX
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  targetBox: {
+    width: 220,
+    height: 220,
+    backgroundColor: "rgba(0,255,255,0.05)",
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "rgba(0,255,255,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  targetBoxActive: {
+    borderColor: "#00ffff",
+    backgroundColor: "rgba(0,255,255,0.15)",
+  },
+  boxName: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "900",
+    textAlign: "center",
+    paddingHorizontal: 10,
+  },
+  boxArrow: { color: "#fff", fontSize: 40, marginVertical: 10 },
+  boxStatus: { color: "#fff", fontSize: 10, fontWeight: "bold" },
+
+  // BOTTOM WAYFINDER
   wayfinderLayer: {
     position: "absolute",
-    bottom: 150,
+    bottom: 100,
     alignSelf: "center",
     alignItems: "center",
-    zIndex: 5000,
+    zIndex: 20,
   },
   compassBase: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: "rgba(0,0,0,0.8)",
     borderWidth: 1,
     borderColor: "rgba(0,255,255,0.2)",
@@ -260,49 +325,35 @@ const styles = StyleSheet.create({
   lubberLine: {
     position: "absolute",
     top: 0,
-    width: 4,
-    height: 15,
+    width: 3,
+    height: 12,
     backgroundColor: "#ff3333",
     zIndex: 10,
-    borderRadius: 2,
   },
   floatingDisc: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(0,255,255,0.05)",
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: "center",
     alignItems: "center",
   },
-  targetIcon: { color: "#00ffff", fontSize: 32, fontWeight: "bold" },
-  targetLabel: {
-    color: "#00ffff",
-    fontSize: 8,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-
+  targetIcon: { color: "#00ffff", fontSize: 28 },
+  targetLabel: { color: "#00ffff", fontSize: 7, fontWeight: "900" },
   instructionPill: {
     marginTop: 15,
     backgroundColor: "rgba(0,0,0,0.9)",
-    paddingHorizontal: 25,
-    paddingVertical: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
     borderRadius: 2,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "#fff",
     alignItems: "center",
   },
-  pillActive: { borderColor: "#00ffff" },
   instructionText: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "900",
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
-  distanceText: {
-    color: "rgba(255,255,255,0.6)",
-    fontSize: 9,
-    fontWeight: "bold",
-    marginTop: 2,
-  },
+  distanceText: { color: "rgba(255,255,255,0.6)", fontSize: 9, marginTop: 2 },
 });
