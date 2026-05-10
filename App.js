@@ -103,7 +103,6 @@ export default function App() {
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    // Hyper-sensitive targeting for 15ft range
     if (Math.abs(diff) < 35) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
@@ -123,8 +122,6 @@ export default function App() {
       </View>
     );
 
-  const isLocked = Math.abs(distanceToTarget) < 50;
-
   return (
     <View style={styles.container}>
       <StatusBar hidden />
@@ -140,7 +137,7 @@ export default function App() {
         <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
       </View>
 
-      {/* 2. GOLDEN COMPASS (TOP RIGHT) */}
+      {/* 2. GOLDEN COMPASS (TOP RIGHT) - UNTOUCHED */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -155,28 +152,7 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* 3. INFO/TARGET BOX (CENTER) */}
-      <View style={styles.centerContainer} pointerEvents="none">
-        <View
-          style={[
-            styles.targetBox,
-            turnInstruction === "TARGET LOCKED" && styles.targetBoxActive,
-          ]}
-        >
-          <Text style={styles.boxName}>{activeTarget.name}</Text>
-          <Text
-            style={[
-              styles.boxArrow,
-              turnInstruction === "TARGET LOCKED" && { color: "#00ffff" },
-            ]}
-          >
-            ▲
-          </Text>
-          <Text style={styles.boxStatus}>{turnInstruction}</Text>
-        </View>
-      </View>
-
-      {/* 4. FLOATING WAYFINDER & TURN PILL (BOTTOM) */}
+      {/* 3. FLOATING WAYFINDER & NAVIGATION PILL (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -198,7 +174,18 @@ export default function App() {
         </View>
       </View>
 
-      {/* 3D AR CANVAS (ONLY WHEN FACING TARGET) */}
+      {/* 4. INFO BOX (Appears when near church) */}
+      {distanceToTarget < 30 && (
+        <View style={styles.infoPanel} pointerEvents="none">
+          <Text style={styles.infoTitle}>{activeTarget.name}</Text>
+          <Text style={styles.infoMeta}>
+            {activeTarget.year} | {activeTarget.architect}
+          </Text>
+          <Text style={styles.infoFact}>{activeTarget.fact}</Text>
+        </View>
+      )}
+
+      {/* 3D AR CANVAS */}
       {turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -226,7 +213,6 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // TOP LEFT BAR
   headerBar: {
     position: "absolute",
     top: 50,
@@ -253,7 +239,6 @@ const styles = StyleSheet.create({
   signalName: { color: "#fff", fontSize: 18, fontWeight: "900" },
   signalDist: { color: "#fff", fontSize: 22, fontWeight: "300" },
 
-  // TOP RIGHT COMPASS
   compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   ring: {
     width: 60,
@@ -277,33 +262,6 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
 
-  // CENTER BOX
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  targetBox: {
-    width: 220,
-    height: 220,
-    backgroundColor: "rgba(0,255,255,0.05)",
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: "rgba(0,255,255,0.3)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  targetBoxActive: {
-    borderColor: "#00ffff",
-    backgroundColor: "rgba(0,255,255,0.15)",
-  },
-  boxName: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "900",
-    textAlign: "center",
-    paddingHorizontal: 10,
-  },
-  boxArrow: { color: "#fff", fontSize: 40, marginVertical: 10 },
-  boxStatus: { color: "#fff", fontSize: 10, fontWeight: "bold" },
-
-  // BOTTOM WAYFINDER
   wayfinderLayer: {
     position: "absolute",
     bottom: 100,
@@ -356,4 +314,31 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   distanceText: { color: "rgba(255,255,255,0.6)", fontSize: 9, marginTop: 2 },
+
+  infoPanel: {
+    position: "absolute",
+    bottom: 300,
+    alignSelf: "center",
+    width: "85%",
+    backgroundColor: "rgba(0,0,0,0.95)",
+    padding: 20,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "#00ffff",
+    zIndex: 30,
+  },
+  infoTitle: {
+    color: "#00ffff",
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 5,
+  },
+  infoMeta: {
+    color: "#fff",
+    fontSize: 10,
+    opacity: 0.6,
+    marginBottom: 10,
+    letterSpacing: 1,
+  },
+  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
 });
