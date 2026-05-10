@@ -1,44 +1,100 @@
-// ... existing imports ...
+import React, { useState, useEffect } from "react";
+import { StyleSheet, View, Text, StatusBar } from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { Canvas } from "@react-three/fiber/native";
+import { Magnetometer } from "expo-sensors";
+import * as Location from "expo-location";
+
+import { GhostBuilding } from "./src/components/GhostBuilding";
+import { NavigationHUD } from "./src/components/NavigationHUD";
+
+const SITE = {
+  name: "NY LIFE / MSG II",
+  coords: { latitude: 40.7427, longitude: -73.9856 },
+};
 
 export default function App() {
-  // ... existing state ...
+  const [permission, requestPermission] = useCameraPermissions();
+  const [userLoc, setUserLoc] = useState(null);
+  const [vpsHeading, setVpsHeading] = useState(0);
+  const [magHeading, setMagHeading] = useState(0);
+  const [vpsAccuracy, setVpsAccuracy] = useState(100);
+  const [isVpsLocked, setIsVpsLocked] = useState(false);
+
+  useEffect(() => {
+    if (permission && !permission.granted) requestPermission();
+
+    Magnetometer.setUpdateInterval(100);
+    const magSub = Magnetometer.addListener((data) => {
+      let angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
+      setMagHeading((angle + 360 + 13.0) % 360);
+    });
+
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 0.1,
+          },
+          (loc) => {
+            setUserLoc(loc.coords);
+            setVpsAccuracy(loc.coords.accuracy || 100);
+            if (loc.coords.heading !== null) setVpsHeading(loc.coords.heading);
+            setIsVpsLocked(loc.coords.accuracy < 25);
+          },
+        );
+      }
+    })();
+    return () => magSub.remove();
+  }, [permission]);
+
+  if (!permission?.granted)
+    return (
+      <View style={styles.center}>
+        <Text>CAMERA REQ...</Text>
+      </View>
+    );
 
   return (
     <View style={styles.container}>
       <StatusBar hidden />
 
-      {/* 1. BACKGROUND: CAMERA */}
+      {/* 1. CAMERA (BASE) */}
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 2. MID-GROUND: 3D GHOST (Only appears when in range/locked) */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
-          <ambientLight intensity={1.5} />
-          {activeSite && <GhostBuilding distance={15} />}
-        </Canvas>
-      </View>
+      {/* 2. 3D CANVAS (Only mounts when VPS is stable) */}
+      {isVpsLocked && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
+            <ambientLight intensity={1.5} />
+            <GhostBuilding distance={15} />
+          </Canvas>
+        </View>
+      )}
 
-      {/* 3. FOREGROUND: HUD (Always On) */}
+      {/* 3. HUD (ALWAYS ON) */}
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
         target={SITE}
         userLoc={userLoc}
-        isApiLocked={vpsAccuracy < 25}
+        isApiLocked={isVpsLocked}
       />
 
-      {/* 4. STATUS PILL */}
+      {/* 4. API STATUS PILL */}
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
             styles.dot,
-            { backgroundColor: vpsAccuracy < 25 ? "#00ffff" : "#ff3333" },
+            { backgroundColor: isVpsLocked ? "#00ffff" : "#ff3333" },
           ]}
         />
         <Text style={styles.pillText}>
-          {vpsAccuracy < 25 ? "VPS ACTIVE" : "SCANNING STREET..."}
+          {isVpsLocked ? "VPS LOCKED" : "VPS LOCALIZING..."}
         </Text>
       </View>
     </View>
@@ -47,11 +103,17 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000" },
+  center: {
+    flex: 1,
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   statusPill: {
     position: "absolute",
     top: 60,
     left: 20,
-    zIndex: 2000,
+    zIndex: 3000,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.8)",

@@ -12,10 +12,10 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // COMPASS: True North (Independent of targeting)
+  // COMPASS: 0 is North
   const compassRotation = (360 - magHeading) % 360;
 
-  // TARGETING: Bearing to the NY Life Building
+  // TARGETING: Angle to the building
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -26,12 +26,12 @@ export function NavigationHUD({
   if (diff > 180) diff -= 360;
   if (diff < -180) diff += 360;
 
-  // TARGET LOCK: Arrow points UP (0deg) when facing the building
+  // TARGET LOCK: Up arrow when facing building
   const isOnTarget = isApiLocked || Math.abs(diff) < 25;
   const arrowRotation = isOnTarget ? 0 : diff < 0 ? -90 : 90;
 
   return (
-    <View style={styles.hudMaster} pointerEvents="box-none">
+    <View style={styles.masterHUD} pointerEvents="box-none">
       {/* COMPASS (Top Right) */}
       <View style={styles.compassPos}>
         <View
@@ -45,11 +45,10 @@ export function NavigationHUD({
         </View>
       </View>
 
-      {/* TARGETING RETICLE (Center) */}
+      {/* CENTER RETICLE */}
       <View style={styles.centerContainer} pointerEvents="none">
         <View style={[styles.box, isOnTarget && styles.boxActive]}>
           <Text style={styles.title}>{target.name}</Text>
-
           <View
             style={{
               transform: [{ rotate: `${arrowRotation}deg` }],
@@ -60,7 +59,6 @@ export function NavigationHUD({
               ▲
             </Text>
           </View>
-
           <Text style={styles.instr}>
             {isOnTarget
               ? "TARGET LOCKED"
@@ -75,13 +73,13 @@ export function NavigationHUD({
 }
 
 const styles = StyleSheet.create({
-  hudMaster: {
+  masterHUD: {
     position: "absolute",
     width: width,
     height: height,
     top: 0,
     left: 0,
-    zIndex: 1000,
+    zIndex: 2000,
   },
   compassPos: { position: "absolute", top: 60, right: 30 },
   ring: {
@@ -90,7 +88,7 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     borderWidth: 2,
     borderColor: "#00ffff",
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.8)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -106,14 +104,14 @@ const styles = StyleSheet.create({
   box: {
     width: 240,
     padding: 30,
-    backgroundColor: "rgba(0,0,0,0.85)",
-    borderRadius: 2,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
   },
-  boxActive: { borderColor: "#00ffff", backgroundColor: "rgba(0,255,255,0.1)" },
+  boxActive: { borderColor: "#00ffff" },
   title: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 2 },
-  instr: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.8 },
-  arrow: { color: "#fff", fontSize: 48 },
+  instr: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.7 },
+  arrow: { color: "#fff", fontSize: 44 },
 });
