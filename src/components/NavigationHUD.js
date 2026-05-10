@@ -1,142 +1,219 @@
-import React from "react";
-import { View, StyleSheet, Text, Dimensions } from "react-native";
+import React, { useState, useEffect, useRef } from "react";
+import { StyleSheet, View, Text, StatusBar } from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { Canvas } from "@react-three/fiber/native";
+import { Magnetometer } from "expo-sensors";
+import * as Location from "expo-location";
 
-const { width, height } = Dimensions.get("window");
+import { GhostBuilding } from "./src/components/GhostBuilding";
+import { NavigationHUD } from "./src/components/NavigationHUD";
 
-export function NavigationHUD({
-  vpsHeading,
-  magHeading,
-  target,
-  userLoc,
-  isApiLocked,
-}) {
-  if (!userLoc || !target) return null;
+/** * THE GHOST REGISTRY
+ * Refined coordinates for the 28th St entrance of St. Stephen's.
+ */
+const GHOST_SITES = [
+  {
+    id: "ny-life",
+    name: "NY LIFE / MSG II",
+    coords: { latitude: 40.7427, longitude: -73.9856 },
+    year: "1890",
+    architect: "Stanford White",
+    fact: "Former site of the second Madison Square Garden.",
+  },
+  {
+    id: "st-stephens",
+    name: "ST. STEPHEN'S CHURCH",
+    coords: { latitude: 40.7421, longitude: -73.9798 }, // Precise 28th St sidewalk entry
+    year: "1854",
+    architect: "James Renwick Jr.",
+    fact: "Renwick's first major commission after St. Patrick's Cathedral.",
+  },
+];
 
-  // HEADING-UP: The ring rotates to keep 'N' pointing at the real North.
-  const ringRotation = (360 - magHeading) % 360;
+export default function App() {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [userLoc, setUserLoc] = useState(null);
+  const [vpsHeading, setVpsHeading] = useState(0);
+  const [magHeading, setMagHeading] = useState(0);
+  const [vpsAccuracy, setVpsAccuracy] = useState(100);
+  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
+  const [distanceToTarget, setDistanceToTarget] = useState(5); // Start at 15ft
 
-  // TARGETING MATH
-  const dy = target.coords.latitude - userLoc.latitude;
-  const dx =
-    Math.cos((userLoc.latitude * Math.PI) / 180) *
-    (target.coords.longitude - userLoc.longitude);
-  const bearingToTarget = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
+  const lastHeading = useRef(0);
 
-  let diff = bearingToTarget - vpsHeading;
-  if (diff > 180) diff -= 360;
-  if (diff < -180) diff += 360;
+  useEffect(() => {
+    if (permission && !permission.granted) requestPermission();
 
-  const isOnTarget = isApiLocked || Math.abs(diff) < 25;
-  const arrowRotation = isOnTarget ? 0 : diff < 0 ? -90 : 90;
+    // GOLDEN SENSOR LOGIC (LOCKED - ATAN2 Z, -X)
+    Magnetometer.setUpdateInterval(100);
+    const magSub = Magnetometer.addListener((data) => {
+      let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
+      let heading = (angle + 360 + 13.0) % 360;
+      const smoothed = lastHeading.current * 0.7 + heading * 0.3;
+      lastHeading.current = smoothed;
+      setMagHeading(smoothed);
+    });
+
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 0.1,
+          },
+          (loc) => {
+            setUserLoc(loc.coords);
+            setVpsAccuracy(loc.coords.accuracy || 100);
+            if (loc.coords.heading !== null) setVpsHeading(loc.coords.heading);
+          },
+        );
+      }
+    })();
+
+    return () => magSub.remove();
+  }, [permission]);
+
+  // PROXIMITY ENGINE: Widened for high-interference urban blocks
+  useEffect(() => {
+    if (!userLoc) return;
+
+    let closest = GHOST_SITES[1]; // Default to Church while you're there
+    let minDistance = Infinity;
+
+    GHOST_SITES.forEach((site) => {
+      const dy = (site.coords.latitude - userLoc.latitude) * 111320;
+      const dx =
+        (site.coords.longitude - userLoc.longitude) *
+        (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = site;
+      }
+    });
+
+    setActiveTarget(closest);
+    setDistanceToTarget(Math.max(4, minDistance)); // Clamping to 4m so lines don't clip your face
+  }, [userLoc]);
+
+  if (!permission?.granted)
+    return (
+      <View style={styles.load}>
+        <Text style={styles.loadText}>CALIBRATING SCAN...</Text>
+      </View>
+    );
 
   return (
-    <View style={styles.hudWrapper} pointerEvents="box-none">
-      <View style={styles.compassPosition}>
-        <View
-          style={[
-            styles.ring,
-            { transform: [{ rotate: `${ringRotation}deg` }] },
-          ]}
-        >
-          <View style={styles.northMarker}>
-            <Text style={styles.nText}>N</Text>
-          </View>
-        </View>
-        <View style={styles.fixedIndicator} />
+    <View style={styles.container}>
+      <StatusBar hidden />
+
+      <View style={StyleSheet.absoluteFill}>
+        <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      <View style={styles.centerContainer} pointerEvents="none">
-        <View style={[styles.targetBox, isOnTarget && styles.targetBoxActive]}>
-          <Text style={styles.buildingName}>{target.name}</Text>
-          <View
-            style={{
-              transform: [{ rotate: `${arrowRotation}deg` }],
-              marginVertical: 20,
-            }}
-          >
-            <Text
-              style={[styles.arrowIcon, isOnTarget && { color: "#00ffff" }]}
-            >
-              ▲
-            </Text>
-          </View>
-          <Text style={styles.instructionText}>
-            {isOnTarget
-              ? "TARGET LOCKED"
-              : diff < 0
-                ? "SCAN LEFT"
-                : "SCAN RIGHT"}
-          </Text>
+      {/* 3D CANVAS: Forced visibility for close-range inspection */}
+      {vpsAccuracy < 100 && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
+            <ambientLight intensity={1.5} />
+            <GhostBuilding distance={distanceToTarget} level={true} />
+          </Canvas>
         </View>
+      )}
+
+      {/* INFO PANEL: Forced trigger for immediate feedback */}
+      {distanceToTarget < 40 && (
+        <View style={styles.infoPanel} pointerEvents="none">
+          <Text style={styles.infoTitle}>{activeTarget.name}</Text>
+          <Text style={styles.infoMeta}>
+            {activeTarget.year} | {activeTarget.architect}
+          </Text>
+          <Text style={styles.infoFact}>{activeTarget.fact}</Text>
+        </View>
+      )}
+
+      <NavigationHUD
+        vpsHeading={vpsHeading}
+        magHeading={magHeading}
+        target={activeTarget}
+        userLoc={userLoc}
+        isApiLocked={vpsAccuracy < 45}
+      />
+
+      <View style={styles.statusPill} pointerEvents="none">
+        <View
+          style={[
+            styles.dot,
+            { backgroundColor: vpsAccuracy < 45 ? "#00ffff" : "#ffaa00" },
+          ]}
+        />
+        <Text style={styles.pillText}>
+          {vpsAccuracy < 45
+            ? "STABLE LOCK"
+            : `LOCATING ${activeTarget.id.toUpperCase()}`}
+        </Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  hudWrapper: {
-    position: "absolute",
-    width: width,
-    height: height,
-    top: 0,
-    left: 0,
-    zIndex: 2000,
-  },
-  compassPosition: {
-    position: "absolute",
-    top: 60,
-    right: 30,
-    width: 75,
-    height: 75,
-    alignItems: "center",
+  container: { flex: 1, backgroundColor: "#000" },
+  load: {
+    flex: 1,
+    backgroundColor: "#000",
     justifyContent: "center",
-  },
-  ring: {
-    width: 65,
-    height: 65,
-    borderRadius: 32.5,
-    borderWidth: 3,
-    borderColor: "#00ffff",
-    backgroundColor: "rgba(0,0,0,0.85)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  northMarker: { position: "absolute", top: 4, alignItems: "center" },
-  nText: { color: "#00ffff", fontSize: 16, fontWeight: "900" },
-  fixedIndicator: {
-    position: "absolute",
-    top: -4,
-    width: 4,
-    height: 16,
-    backgroundColor: "#ff3333",
-    borderRadius: 2,
-    zIndex: 2001,
-  },
-  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  targetBox: {
-    width: 240,
-    padding: 30,
-    backgroundColor: "rgba(0,0,0,0.9)",
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
   },
-  targetBoxActive: {
-    borderColor: "#00ffff",
-    backgroundColor: "rgba(0,255,255,0.1)",
-  },
-  buildingName: {
-    color: "#fff",
+  loadText: {
+    color: "#00ffff",
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 2,
   },
-  instructionText: {
+  statusPill: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    zIndex: 3000,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.85)",
+    padding: 10,
+    borderRadius: 2,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+  pillText: {
     color: "#fff",
     fontSize: 10,
-    fontWeight: "bold",
-    opacity: 0.8,
+    fontWeight: "900",
+    letterSpacing: 1.5,
   },
-  arrowIcon: { color: "#fff", fontSize: 48 },
+  infoPanel: {
+    position: "absolute",
+    bottom: 120,
+    alignSelf: "center",
+    width: "85%",
+    backgroundColor: "rgba(0,0,0,0.95)",
+    padding: 20,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "#00ffff",
+    zIndex: 4000,
+  },
+  infoTitle: {
+    color: "#00ffff",
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 5,
+  },
+  infoMeta: {
+    color: "#fff",
+    fontSize: 10,
+    opacity: 0.6,
+    marginBottom: 10,
+    letterSpacing: 1,
+  },
+  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
 });

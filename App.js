@@ -8,16 +8,25 @@ import * as Location from "expo-location";
 import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
+/** * THE GHOST REGISTRY
+ * Refined coordinates for the 28th St entrance of St. Stephen's.
+ */
 const GHOST_SITES = [
   {
     id: "ny-life",
     name: "NY LIFE / MSG II",
     coords: { latitude: 40.7427, longitude: -73.9856 },
+    year: "1890",
+    architect: "Stanford White",
+    fact: "Former site of the second Madison Square Garden.",
   },
   {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
-    coords: { latitude: 40.742, longitude: -73.9794 },
+    coords: { latitude: 40.7421, longitude: -73.9798 }, // Precise 28th St sidewalk entry
+    year: "1854",
+    architect: "James Renwick Jr.",
+    fact: "Renwick's first major commission after St. Patrick's Cathedral.",
   },
 ];
 
@@ -28,7 +37,7 @@ export default function App() {
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
-  const [distanceToTarget, setDistanceToTarget] = useState(15);
+  const [distanceToTarget, setDistanceToTarget] = useState(5); // Start at 15ft
 
   const lastHeading = useRef(0);
 
@@ -65,11 +74,11 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // PROXIMITY ENGINE & DYNAMIC DISTANCE
+  // PROXIMITY ENGINE: Widened for high-interference urban blocks
   useEffect(() => {
     if (!userLoc) return;
 
-    let closest = GHOST_SITES[0];
+    let closest = GHOST_SITES[1]; // Default to Church while you're there
     let minDistance = Infinity;
 
     GHOST_SITES.forEach((site) => {
@@ -85,13 +94,13 @@ export default function App() {
     });
 
     setActiveTarget(closest);
-    setDistanceToTarget(minDistance); // Update distance for 3D Canvas
+    setDistanceToTarget(Math.max(4, minDistance)); // Clamping to 4m so lines don't clip your face
   }, [userLoc]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>CALIBRATING GHOSTS...</Text>
+        <Text style={styles.loadText}>CALIBRATING SCAN...</Text>
       </View>
     );
 
@@ -103,14 +112,24 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 3D CANVAS: Distance is now dynamic based on your position */}
-      {vpsAccuracy < 80 && (
+      {/* 3D CANVAS: Forced visibility for close-range inspection */}
+      {vpsAccuracy < 100 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
-            {/* Building sits at the actual real-world distance */}
-            <GhostBuilding distance={distanceToTarget} />
+            <GhostBuilding distance={distanceToTarget} level={true} />
           </Canvas>
+        </View>
+      )}
+
+      {/* INFO PANEL: Forced trigger for immediate feedback */}
+      {distanceToTarget < 40 && (
+        <View style={styles.infoPanel} pointerEvents="none">
+          <Text style={styles.infoTitle}>{activeTarget.name}</Text>
+          <Text style={styles.infoMeta}>
+            {activeTarget.year} | {activeTarget.architect}
+          </Text>
+          <Text style={styles.infoFact}>{activeTarget.fact}</Text>
         </View>
       )}
 
@@ -119,20 +138,20 @@ export default function App() {
         magHeading={magHeading}
         target={activeTarget}
         userLoc={userLoc}
-        isApiLocked={vpsAccuracy < 30}
+        isApiLocked={vpsAccuracy < 45}
       />
 
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
             styles.dot,
-            { backgroundColor: vpsAccuracy < 30 ? "#00ffff" : "#ffaa00" },
+            { backgroundColor: vpsAccuracy < 45 ? "#00ffff" : "#ffaa00" },
           ]}
         />
         <Text style={styles.pillText}>
-          {vpsAccuracy < 30
-            ? "TARGET LOCKED"
-            : `DISTANCE: ${Math.round(distanceToTarget)}m`}
+          {vpsAccuracy < 45
+            ? "STABLE LOCK"
+            : `LOCATING ${activeTarget.id.toUpperCase()}`}
         </Text>
       </View>
     </View>
@@ -171,4 +190,30 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1.5,
   },
+  infoPanel: {
+    position: "absolute",
+    bottom: 120,
+    alignSelf: "center",
+    width: "85%",
+    backgroundColor: "rgba(0,0,0,0.95)",
+    padding: 20,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "#00ffff",
+    zIndex: 4000,
+  },
+  infoTitle: {
+    color: "#00ffff",
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 5,
+  },
+  infoMeta: {
+    color: "#fff",
+    fontSize: 10,
+    opacity: 0.6,
+    marginBottom: 10,
+    letterSpacing: 1,
+  },
+  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
 });
