@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { StyleSheet, View, Text, StatusBar } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
-import { Magnetometer } from "expo-sensors";
+import { DeviceMotion } from "expo-sensors";
 import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
@@ -24,17 +24,19 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * SELECTIVE POLE MIRROR:
-     * To flip N/S but leave E/W alone, we negate the Y axis while keeping X.
-     * This mirrors the orientation across the East-West line.
+    /** * THE CORRECTED FUSION MIRROR:
+     * We use (360 - degrees) to mirror the Alpha rotation.
+     * This flips the vertical poles (N/S) without changing
+     * the horizontal orientation (E/W) that was working.
      */
-    Magnetometer.setUpdateInterval(100);
-    const magSub = Magnetometer.addListener((data) => {
-      // Negating Y flips N/S. Keeping X saves your E/W progress.
-      let angle = Math.atan2(data.x, -data.y) * (180 / Math.PI);
-
-      // Apply NYC Declination (13°)
-      setMagHeading((angle + 360 + 13.0) % 360);
+    DeviceMotion.setUpdateInterval(100);
+    const motionSub = DeviceMotion.addListener((data) => {
+      if (data.rotation) {
+        let rawDegrees = data.rotation.alpha * (180 / Math.PI);
+        // Mirroring the yaw to fix North/South inversion
+        let heading = (360 - rawDegrees + 360) % 360;
+        setMagHeading(heading);
+      }
     });
 
     (async () => {
@@ -54,13 +56,13 @@ export default function App() {
         );
       }
     })();
-    return () => magSub.remove();
+    return () => motionSub.remove();
   }, [permission]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>AXIS MIRRORING...</Text>
+        <Text style={{ color: "#0ff" }}>RESTORING FUSION...</Text>
       </View>
     );
 
@@ -93,7 +95,7 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "VPS LOCKED" : "SELECTIVE MIRROR ACTIVE"}
+          {isVpsLocked ? "VPS LOCKED" : "STABILIZING COMPASS..."}
         </Text>
       </View>
     </View>
