@@ -44,9 +44,7 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * GOLDEN COMPASS LOGIC - VERIFIED PORTRAIT (Vertical) Orientation
-     * Math: atan2(z, -x)
-     */
+    // GOLDEN SENSOR LOGIC (LOCKED - ATAN2 Z, -X)
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
@@ -76,7 +74,7 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // PROXIMITY ENGINE & DYNAMIC DISTANCE SCALING
+  // PROXIMITY ENGINE & PANEL TRIGGER
   useEffect(() => {
     if (!userLoc) return;
 
@@ -96,14 +94,13 @@ export default function App() {
     });
 
     setActiveTarget(closest);
-    // Clamp distance to 4m so 3D lines don't clip through the camera when standing 15ft away
-    setDistanceToTarget(Math.max(4, minDistance));
+    setDistanceToTarget(minDistance);
   }, [userLoc]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>CALIBRATING GHOST CORE...</Text>
+        <Text style={styles.loadText}>FORCING UI RESTORATION...</Text>
       </View>
     );
 
@@ -115,19 +112,18 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 3D CANVAS: Accuracy threshold relaxed to 100m for urban skyscrapers */}
+      {/* 3D CANVAS */}
       {vpsAccuracy < 100 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
-            {/* Building sits at the actual measured distance */}
-            <GhostBuilding distance={distanceToTarget} />
+            <GhostBuilding distance={Math.max(5, distanceToTarget)} />
           </Canvas>
         </View>
       )}
 
-      {/* INFO PANEL: Forced trigger when close to site */}
-      {distanceToTarget < 45 && (
+      {/* FIXED INFO PANEL: Triggered for anything under 50m */}
+      {distanceToTarget < 50 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
           <Text style={styles.infoMeta}>
@@ -145,7 +141,6 @@ export default function App() {
         isApiLocked={vpsAccuracy < 45}
       />
 
-      {/* STATUS PILL */}
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
@@ -156,7 +151,7 @@ export default function App() {
         <Text style={styles.pillText}>
           {vpsAccuracy < 45
             ? "STABLE LOCK"
-            : `LOCATING ${activeTarget.id.toUpperCase()}`}
+            : `SCANNING: ${activeTarget.id.toUpperCase()}`}
         </Text>
       </View>
     </View>
@@ -205,7 +200,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     borderWidth: 1,
     borderColor: "#00ffff",
-    zIndex: 4000,
+    zIndex: 5000, // Highest priority layer
   },
   infoTitle: {
     color: "#00ffff",
