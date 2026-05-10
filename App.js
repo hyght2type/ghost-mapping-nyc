@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { StyleSheet, View, Text, StatusBar } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
-import { DeviceMotion } from "expo-sensors";
+import { Magnetometer } from "expo-sensors";
 import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
@@ -24,19 +24,17 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * THE CORRECTED FUSION MIRROR:
-     * We use (360 - degrees) to mirror the Alpha rotation.
-     * This flips the vertical poles (N/S) without changing
-     * the horizontal orientation (E/W) that was working.
+    /** * FULL POLAR SWAP:
+     * By negating both x and y (atan2(-x, -y)), we flip the sensor's
+     * entire coordinate system by 180 degrees to correct the "backwards"
+     * behavior across all four cardinal directions.
      */
-    DeviceMotion.setUpdateInterval(100);
-    const motionSub = DeviceMotion.addListener((data) => {
-      if (data.rotation) {
-        let rawDegrees = data.rotation.alpha * (180 / Math.PI);
-        // Mirroring the yaw to fix North/South inversion
-        let heading = (360 - rawDegrees + 360) % 360;
-        setMagHeading(heading);
-      }
+    Magnetometer.setUpdateInterval(100);
+    const magSub = Magnetometer.addListener((data) => {
+      // Swapping all 4 sets via double-negation
+      let angle = Math.atan2(-data.x, -data.y) * (180 / Math.PI);
+      // Correct for NYC Declination (13°)
+      setMagHeading((angle + 360 + 13.0) % 360);
     });
 
     (async () => {
@@ -56,13 +54,13 @@ export default function App() {
         );
       }
     })();
-    return () => motionSub.remove();
+    return () => magSub.remove();
   }, [permission]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>RESTORING FUSION...</Text>
+        <Text style={{ color: "#0ff" }}>SWAPPING POLES...</Text>
       </View>
     );
 
@@ -95,7 +93,7 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "VPS LOCKED" : "STABILIZING COMPASS..."}
+          {isVpsLocked ? "VPS LOCKED" : "FULL POLAR ALIGNMENT"}
         </Text>
       </View>
     </View>

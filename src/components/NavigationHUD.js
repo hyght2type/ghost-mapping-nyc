@@ -12,7 +12,7 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // HEADING-UP: 'N' stays fixed to the world North.
+  // HEADING-UP: The ring rotates to keep 'N' pointing at the real North.
   const ringRotation = (360 - magHeading) % 360;
 
   // TARGETING MATH
@@ -31,6 +31,7 @@ export function NavigationHUD({
 
   return (
     <View style={styles.hudWrapper} pointerEvents="box-none">
+      {/* HEADING-UP COMPASS */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -45,6 +46,7 @@ export function NavigationHUD({
         <View style={styles.fixedIndicator} />
       </View>
 
+      {/* TARGETING BOX */}
       <View style={styles.centerContainer} pointerEvents="none">
         <View style={[styles.targetBox, isOnTarget && styles.targetBoxActive]}>
           <Text style={styles.buildingName}>{target.name}</Text>
@@ -101,7 +103,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  northMarker: { position: "absolute", top: 4 },
+  northMarker: { position: "absolute", top: 4, alignItems: "center" },
   nText: { color: "#00ffff", fontSize: 16, fontWeight: "900" },
   fixedIndicator: {
     position: "absolute",
@@ -110,6 +112,7 @@ const styles = StyleSheet.create({
     height: 16,
     backgroundColor: "#ff3333",
     borderRadius: 2,
+    zIndex: 2001,
   },
   centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   targetBox: {
