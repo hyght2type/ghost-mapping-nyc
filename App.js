@@ -27,7 +27,8 @@ export default function App() {
   const [vpsHeading, setVpsHeading] = useState(0);
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
-  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]); // Default to Church
+  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
+  const [distanceToTarget, setDistanceToTarget] = useState(15);
 
   const lastHeading = useRef(0);
 
@@ -64,8 +65,10 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
+  // PROXIMITY ENGINE & DYNAMIC DISTANCE
   useEffect(() => {
     if (!userLoc) return;
+
     let closest = GHOST_SITES[0];
     let minDistance = Infinity;
 
@@ -80,13 +83,15 @@ export default function App() {
         closest = site;
       }
     });
+
     setActiveTarget(closest);
+    setDistanceToTarget(minDistance); // Update distance for 3D Canvas
   }, [userLoc]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>RESTORING HUD...</Text>
+        <Text style={styles.loadText}>CALIBRATING GHOSTS...</Text>
       </View>
     );
 
@@ -98,13 +103,13 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 3D CANVAS: Now always visible if accuracy is under 60m (Manhattan standard) */}
-      {vpsAccuracy < 60 && (
+      {/* 3D CANVAS: Distance is now dynamic based on your position */}
+      {vpsAccuracy < 80 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
-            {/* The 15 step distance offset */}
-            <GhostBuilding distance={15} />
+            {/* Building sits at the actual real-world distance */}
+            <GhostBuilding distance={distanceToTarget} />
           </Canvas>
         </View>
       )}
@@ -127,9 +132,8 @@ export default function App() {
         <Text style={styles.pillText}>
           {vpsAccuracy < 30
             ? "TARGET LOCKED"
-            : `SEARCHING: ${activeTarget.name}`}
+            : `DISTANCE: ${Math.round(distanceToTarget)}m`}
         </Text>
-        <Text style={styles.accText}>{Math.round(vpsAccuracy)}m</Text>
       </View>
     </View>
   );
@@ -167,5 +171,4 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1.5,
   },
-  accText: { color: "rgba(255,255,255,0.5)", fontSize: 9, marginLeft: 10 },
 });
