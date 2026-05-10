@@ -26,19 +26,20 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * THE ORIENTATION SNAP:
-     * Mapping atan2(-x, z) rotates the coordinate space by 90 degrees
-     * and mirrors the polar flip you described.
+    /** * TRANSPOSED AXIS FIX:
+     * Using atan2(data.z, -data.x) performs a 90-degree counter-clockwise
+     * shift. This should realign the "North points East" error by dragging
+     * the vector back to the vertical center.
      */
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
-      // Re-mapping for Vertical (Face-up) posture
-      let angle = Math.atan2(-data.x, data.z) * (180 / Math.PI);
+      // Swapping z and negative x to rotate the sensor coordinate system
+      let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
 
-      // NYC Declination (13) + Final Calibration Offset
+      // NYC Declination (13) + Final Alignment
       let heading = (angle + 360 + 13.0) % 360;
 
-      // Smoother needle movement
+      // Filter noise
       const smoothed = lastHeading.current * 0.7 + heading * 0.3;
       lastHeading.current = smoothed;
       setMagHeading(smoothed);
@@ -67,7 +68,7 @@ export default function App() {
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>ALIGNING MANHATTAN GRID...</Text>
+        <Text style={{ color: "#0ff" }}>RE-INDEXING SENSORS...</Text>
       </View>
     );
 
@@ -100,7 +101,7 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "POLES ALIGNED" : "STREET CALIBRATION..."}
+          {isVpsLocked ? "POLES RE-INDEXED" : "CORRECTING OFFSET..."}
         </Text>
       </View>
     </View>
