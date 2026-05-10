@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { StyleSheet, View, Text, StatusBar } from "react-native";
+import { StyleSheet, View, Text, StatusBar, Animated } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
 import { Magnetometer } from "expo-sensors";
@@ -8,33 +8,21 @@ import * as Location from "expo-location";
 import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
-/** * THE GHOST REGISTRY
- * Expanded to include Grand Central Terminal and St. Stephen's.
- */
 const GHOST_SITES = [
   {
     id: "ny-life",
     name: "NY LIFE / MSG II",
     coords: { latitude: 40.7427, longitude: -73.9856 },
-    year: "1890",
-    architect: "Stanford White",
-    fact: "Former site of the second Madison Square Garden.",
   },
   {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
     coords: { latitude: 40.7421, longitude: -73.9798 },
-    year: "1854",
-    architect: "James Renwick Jr.",
-    fact: "Renwick's first major commission; contains Brumidi murals.",
   },
   {
     id: "grand-central",
     name: "GRAND CENTRAL TERMINAL",
     coords: { latitude: 40.7527, longitude: -73.9772 },
-    year: "1913",
-    architect: "Reed and Stem",
-    fact: "The celestial ceiling mural is actually painted backwards.",
   },
 ];
 
@@ -47,24 +35,31 @@ export default function App() {
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
   const [distanceToTarget, setDistanceToTarget] = useState(100);
 
-  const lastHeading = useRef(0);
+  // WAYFINDER SPECIFIC STATE
+  const [wayfinderRotation, setWayfinderRotation] = useState(0);
+  const [turnInstruction, setTurnInstruction] = useState("SCANNING");
+
+  const lastHeadingRef = useRef(0);
+  const wayfinderSmoothRef = useRef(0);
 
   useEffect(() => {
-    if (permission && !permission.granted && permission.canAskAgain) {
+    if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
-    }
 
-    /** * GOLDEN SENSOR LOGIC (LOCKED)
-     * Verified for Portrait/Vertical orientation.
-     * Math: atan2(z, -x)
-     */
-    Magnetometer.setUpdateInterval(100);
+    Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
+      // 1. ORIGINAL COMPASS LOGIC (Leave Alone)
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-      let heading = (angle + 360 + 13.0) % 360;
-      const smoothed = lastHeading.current * 0.7 + heading * 0.3;
-      lastHeading.current = smoothed;
-      setMagHeading(smoothed);
+      let trueHeading = (angle + 360 + 13.0) % 360;
+      lastHeadingRef.current = trueHeading;
+      setMagHeading(trueHeading);
+
+      // 2. ISOLATED WAYFINDER LOGIC (The "Water" feel)
+      // This damping is separate from the main compass to create that legacy lag.
+      const wayfinderDamping = 0.85;
+      wayfinderSmoothRef.current =
+        wayfinderSmoothRef.current * wayfinderDamping +
+        trueHeading * (1 - wayfinderDamping);
     });
 
     (async () => {
@@ -87,89 +82,104 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // PROXIMITY ENGINE & NEAREST SIGNAL LOGIC
+  // WAYFINDER CALCULATION ENGINE
   useEffect(() => {
-    if (!userLoc) return;
+    if (!userLoc || !activeTarget) return;
 
-    let closest = GHOST_SITES[0];
-    let minDistance = Infinity;
+    // Calculate Bearing to Building
+    const dy = activeTarget.coords.latitude - userLoc.latitude;
+    const dx =
+      Math.cos((userLoc.latitude * Math.PI) / 180) *
+      (activeTarget.coords.longitude - userLoc.longitude);
+    const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    GHOST_SITES.forEach((site) => {
-      const dy = (site.coords.latitude - userLoc.latitude) * 111320;
-      const dx =
-        (site.coords.longitude - userLoc.longitude) *
-        (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < minDistance) {
-        minDistance = dist;
-        closest = site;
-      }
-    });
+    // Calculate relative rotation (How far are we from looking at it?)
+    let relativeHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
+    setWayfinderRotation(relativeHeading);
 
-    setActiveTarget(closest);
-    setDistanceToTarget(minDistance);
-  }, [userLoc]);
+    // Logic for the Turn-by-Turn Text
+    let diff = bearing - lastHeadingRef.current;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
 
-  if (!permission) return <View style={styles.load} />;
-  if (!permission.granted)
+    if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
+    else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
+    else setTurnInstruction("TURN RIGHT ▶");
+
+    // Distance calculation
+    const distY = (activeTarget.coords.latitude - userLoc.latitude) * 111320;
+    const distX =
+      (activeTarget.coords.longitude - userLoc.longitude) *
+      (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
+    setDistanceToTarget(Math.sqrt(distX * distX + distY * distY));
+  }, [userLoc, magHeading]);
+
+  if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>CAMERA PERMISSION REQUIRED</Text>
+        <Text style={styles.loadText}>INITIALIZING WAYFINDER...</Text>
       </View>
     );
-
-  const isVpsLocked = vpsAccuracy < 40;
 
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-
-      {/* BACKGROUND: CAMERA LAYER */}
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 3D AR LAYER: Ghost Lines appear only when proximity and accuracy are high */}
-      {vpsAccuracy < 100 && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
-            <ambientLight intensity={1.5} />
-            <GhostBuilding distance={Math.max(5, distanceToTarget)} />
-          </Canvas>
-        </View>
-      )}
-
-      {/* UNIFIED HUD: Contains Nearest Signal Bar, Center Target Box, Compass, and Nav Pill */}
+      {/* GOLDEN HUD (Upper Right Compass Stays Untouched) */}
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
         target={activeTarget}
         userLoc={userLoc}
-        isApiLocked={isVpsLocked}
+        isApiLocked={vpsAccuracy < 35}
         distance={distanceToTarget}
       />
 
-      {/* SYSTEM STATUS PILL */}
-      <View style={styles.statusPill} pointerEvents="none">
-        <View
-          style={[
-            styles.dot,
-            { backgroundColor: isVpsLocked ? "#00ffff" : "#ffaa00" },
-          ]}
-        />
-        <Text style={styles.pillText}>
-          {isVpsLocked ? "POLES ALIGNED" : "STREET CALIBRATION..."}
-        </Text>
+      {/* NEW: ISOLATED FLOATING WAYFINDER (Center) */}
+      <View style={styles.wayfinderLayer} pointerEvents="none">
+        <View style={styles.compassBase}>
+          {/* Static Sight: The physical "lubber line" of the ship */}
+          <View style={styles.lubberLine} />
+
+          {/* Floating Disc: This represents the Building's direction */}
+          <View
+            style={[
+              styles.floatingDisc,
+              { transform: [{ rotate: `${wayfinderRotation}deg` }] },
+            ]}
+          >
+            <Text style={styles.targetIcon}>✦</Text>
+            <Text style={styles.targetLabel}>TARGET</Text>
+          </View>
+        </View>
+
+        {/* Turn-by-Turn Wayfinder Text */}
+        <View style={styles.instructionPill}>
+          <Text style={styles.instructionText}>{turnInstruction}</Text>
+          <Text style={styles.distanceText}>
+            {Math.round(distanceToTarget)}m
+          </Text>
+        </View>
       </View>
+
+      {/* 3D AR LAYER */}
+      {vpsAccuracy < 35 && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
+            <ambientLight intensity={1.5} />
+            <GhostBuilding distance={15} />
+          </Canvas>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
+  container: { flex: 1, backgroundColor: "#000" },
   load: {
     flex: 1,
     backgroundColor: "#000",
@@ -182,28 +192,72 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 2,
   },
-  statusPill: {
+
+  // WAYFINDER UI
+  wayfinderLayer: {
     position: "absolute",
-    top: 60,
-    left: 20,
-    zIndex: 3000,
-    flexDirection: "row",
+    bottom: 180,
+    alignSelf: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.85)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  },
+  compassBase: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    borderWidth: 2,
+    borderColor: "rgba(0,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  lubberLine: {
+    position: "absolute",
+    top: 0,
+    width: 4,
+    height: 20,
+    backgroundColor: "#ff3333",
+    zIndex: 10,
     borderRadius: 2,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 10,
+  floatingDisc: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(0,255,255,0.05)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(0,255,255,0.1)",
   },
-  pillText: {
-    color: "#fff",
+  targetIcon: { color: "#00ffff", fontSize: 40, fontWeight: "bold" },
+  targetLabel: {
+    color: "#00ffff",
     fontSize: 10,
     fontWeight: "900",
-    letterSpacing: 1.5,
+    marginTop: 5,
+  },
+
+  instructionPill: {
+    marginTop: 20,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+  },
+  instructionText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+  distanceText: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 10,
+    fontWeight: "bold",
+    marginTop: 4,
   },
 });
