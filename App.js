@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { StyleSheet, View, Text, StatusBar } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
-import { Magnetometer } from "expo-sensors";
+import { DeviceMotion } from "expo-sensors";
 import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
@@ -24,16 +24,18 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * VERTICAL AR FIX:
-     * When holding the phone up (Portrait), we must use the Z-axis
-     * (pointing out of the screen) and X-axis (horizontal).
-     * atan2(-data.z, data.x) aligns the heading with the Camera view.
+    /** * SENSOR FUSION: DeviceMotion (The "Google" Method)
+     * This uses the Alpha (Yaw) value which is calibrated to True North.
+     * It automatically compensates for holding the phone vertically.
      */
-    Magnetometer.setUpdateInterval(100);
-    const magSub = Magnetometer.addListener((data) => {
-      let angle = Math.atan2(-data.z, data.x) * (180 / Math.PI);
-      // NYC Declination (13°) + 90 degree offset for Portrait correction
-      setMagHeading((angle + 360 + 90.0 + 13.0) % 360);
+    DeviceMotion.setUpdateInterval(100);
+    const motionSub = DeviceMotion.addListener((data) => {
+      if (data.rotation) {
+        // Alpha is the rotation around the Z axis (0 = North)
+        // We convert from Radians to Degrees
+        let heading = (data.rotation.alpha * (180 / Math.PI) + 360) % 360;
+        setMagHeading(heading);
+      }
     });
 
     (async () => {
@@ -53,24 +55,22 @@ export default function App() {
         );
       }
     })();
-    return () => magSub.remove();
+    return () => motionSub.remove();
   }, [permission]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>RE-CALIBRATING FOR PORTRAIT...</Text>
+        <Text style={{ color: "#0ff" }}>FUSING SENSORS...</Text>
       </View>
     );
 
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
-
       {isVpsLocked && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -79,7 +79,6 @@ export default function App() {
           </Canvas>
         </View>
       )}
-
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
@@ -87,7 +86,6 @@ export default function App() {
         userLoc={userLoc}
         isApiLocked={isVpsLocked}
       />
-
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
@@ -96,7 +94,7 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "VPS LOCKED" : "VPS LOCALIZING..."}
+          {isVpsLocked ? "VPS LOCKED" : "FUSING AR POSE..."}
         </Text>
       </View>
     </View>
