@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { StyleSheet, View, Text, StatusBar } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
-import { DeviceMotion } from "expo-sensors";
+import { Magnetometer } from "expo-sensors";
 import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
@@ -24,17 +24,17 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * THE 180-DEGREE FLIP FIX:
-     * We add 180 degrees to the fused alpha to flip North and South
-     * while preserving the perfect East/West tracking you verified.
+    /** * SELECTIVE POLE MIRROR:
+     * To flip N/S but leave E/W alone, we negate the Y axis while keeping X.
+     * This mirrors the orientation across the East-West line.
      */
-    DeviceMotion.setUpdateInterval(100);
-    const motionSub = DeviceMotion.addListener((data) => {
-      if (data.rotation) {
-        // Alpha is yaw. Adding 180 flips the poles.
-        let heading = (data.rotation.alpha * (180 / Math.PI) + 180 + 360) % 360;
-        setMagHeading(heading);
-      }
+    Magnetometer.setUpdateInterval(100);
+    const magSub = Magnetometer.addListener((data) => {
+      // Negating Y flips N/S. Keeping X saves your E/W progress.
+      let angle = Math.atan2(data.x, -data.y) * (180 / Math.PI);
+
+      // Apply NYC Declination (13°)
+      setMagHeading((angle + 360 + 13.0) % 360);
     });
 
     (async () => {
@@ -54,13 +54,13 @@ export default function App() {
         );
       }
     })();
-    return () => motionSub.remove();
+    return () => magSub.remove();
   }, [permission]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>FINALIZING POLES...</Text>
+        <Text style={{ color: "#0ff" }}>AXIS MIRRORING...</Text>
       </View>
     );
 
@@ -93,7 +93,7 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "VPS LOCKED" : "POLAR ALIGNMENT..."}
+          {isVpsLocked ? "VPS LOCKED" : "SELECTIVE MIRROR ACTIVE"}
         </Text>
       </View>
     </View>
