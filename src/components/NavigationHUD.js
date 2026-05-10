@@ -31,7 +31,6 @@ export function NavigationHUD({
 
   return (
     <View style={styles.hudWrapper} pointerEvents="box-none">
-      {/* HEADING-UP COMPASS */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -46,7 +45,6 @@ export function NavigationHUD({
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* CENTER TARGETING BOX */}
       <View style={styles.centerContainer} pointerEvents="none">
         <View style={[styles.targetBox, isOnTarget && styles.targetBoxActive]}>
           <Text style={styles.buildingName}>{target.name}</Text>

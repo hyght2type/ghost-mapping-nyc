@@ -21,27 +21,25 @@ export default function App() {
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [isVpsLocked, setIsVpsLocked] = useState(false);
 
-  // Smooth out the sensor noise
   const lastHeading = useRef(0);
 
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * VERTICAL AR FIX:
-     * To make the compass work while holding it to your face,
-     * we use the X and Z axes. The Y axis is ignored because
-     * it represents "tilt" in this posture.
+    /** * THE ORIENTATION SNAP:
+     * Mapping atan2(-x, z) rotates the coordinate space by 90 degrees
+     * and mirrors the polar flip you described.
      */
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
-      // Math for Portrait (Vertical) orientation:
-      let angle = Math.atan2(data.z, data.x) * (180 / Math.PI);
+      // Re-mapping for Vertical (Face-up) posture
+      let angle = Math.atan2(-data.x, data.z) * (180 / Math.PI);
 
-      // Full correction: Flip + Declination (13) + Portrait Offset (90)
-      let heading = (angle + 360 + 90 + 13.0) % 360;
+      // NYC Declination (13) + Final Calibration Offset
+      let heading = (angle + 360 + 13.0) % 360;
 
-      // Low-pass filter to stop the "back and forth" jumping
-      const smoothed = lastHeading.current * 0.8 + heading * 0.2;
+      // Smoother needle movement
+      const smoothed = lastHeading.current * 0.7 + heading * 0.3;
       lastHeading.current = smoothed;
       setMagHeading(smoothed);
     });
@@ -69,7 +67,7 @@ export default function App() {
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>RE-MAPPING VERTICAL AXIS...</Text>
+        <Text style={{ color: "#0ff" }}>ALIGNING MANHATTAN GRID...</Text>
       </View>
     );
 
@@ -102,7 +100,7 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "AR POSE LOCKED" : "ALIGNING TO STREET..."}
+          {isVpsLocked ? "POLES ALIGNED" : "STREET CALIBRATION..."}
         </Text>
       </View>
     </View>
