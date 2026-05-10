@@ -24,20 +24,17 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * SENSOR AXIS CORRECTION:
-     * Using (-y, -x) flips the sensor 180 degrees to correct for
-     * the backwards-north behavior on iPhone Pro devices.
+    /** * FIXED ORIENTATION MATH:
+     * Swapping x and y (atan2(x, y)) is the standard fix for Portrait mode
+     * compasses on iOS to ensure East/West aren't rotated by 90 degrees.
      */
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
-      let angle = Math.atan2(-data.y, -data.x) * (180 / Math.PI);
-      // Correct for NYC magnetic declination (~13° West)
+      let angle = Math.atan2(data.x, data.y) * (180 / Math.PI);
+      // Offset for NYC Declination
       setMagHeading((angle + 360 + 13.0) % 360);
     });
 
-    /** * GOOGLE GEOSPATIAL API:
-     * High-precision urban triangulation for the ghost mapping engine.
-     */
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -61,7 +58,7 @@ export default function App() {
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>INITIALIZING SENSORS...</Text>
+        <Text style={{ color: "#0ff" }}>SYNCING AR SYSTEM...</Text>
       </View>
     );
 
@@ -69,12 +66,12 @@ export default function App() {
     <View style={styles.container}>
       <StatusBar hidden />
 
-      {/* 1. CAMERA VIEW (BOTTOM LAYER) */}
+      {/* 1. CAMERA */}
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 2. 3D CANVAS (MID LAYER) - Only mounts when VPS is stable */}
+      {/* 2. 3D GHOST */}
       {isVpsLocked && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -84,7 +81,7 @@ export default function App() {
         </View>
       )}
 
-      {/* 3. NAVIGATION HUD (TOP LAYER) */}
+      {/* 3. NAVIGATION HUD */}
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
@@ -93,7 +90,7 @@ export default function App() {
         isApiLocked={isVpsLocked}
       />
 
-      {/* 4. API STATUS BAR */}
+      {/* 4. API STATUS PILL */}
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[

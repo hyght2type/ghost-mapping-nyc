@@ -12,11 +12,11 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // HEADING-UP COMPASS LOGIC:
-  // We rotate the entire ring so 'N' reflects its real-world position.
+  // HEADING-UP: The ring rotates to keep 'N' pointing at the real North.
+  // We use a negative rotation so the world stays still while the phone turns.
   const ringRotation = (360 - magHeading) % 360;
 
-  // TARGETING LOGIC (API-driven)
+  // TARGETING MATH
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -32,7 +32,7 @@ export function NavigationHUD({
 
   return (
     <View style={styles.hudWrapper} pointerEvents="box-none">
-      {/* HEADING-UP COMPASS */}
+      {/* COMPASS CONTAINER */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -40,20 +40,19 @@ export function NavigationHUD({
             { transform: [{ rotate: `${ringRotation}deg` }] },
           ]}
         >
-          {/* North Marker is attached to the rotating ring */}
           <View style={styles.northMarker}>
             <Text style={styles.nText}>N</Text>
           </View>
+          <View style={styles.dotMarker} />
         </View>
-        {/* The Indicator Needle is FIXED at the top of the phone */}
+        {/* FIXED INDICATOR (Your Forward View) */}
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* CENTER TARGETING BOX */}
+      {/* TARGETING BOX */}
       <View style={styles.centerContainer} pointerEvents="none">
         <View style={[styles.targetBox, isOnTarget && styles.targetBoxActive]}>
           <Text style={styles.buildingName}>{target.name}</Text>
-
           <View
             style={{
               transform: [{ rotate: `${arrowRotation}deg` }],
@@ -66,7 +65,6 @@ export function NavigationHUD({
               ▲
             </Text>
           </View>
-
           <Text style={styles.instructionText}>
             {isOnTarget
               ? "TARGET LOCKED"
@@ -93,50 +91,46 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 60,
     right: 30,
-    width: 70,
-    height: 70,
+    width: 75,
+    height: 75,
     alignItems: "center",
     justifyContent: "center",
   },
   ring: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
+    width: 65,
+    height: 65,
+    borderRadius: 32.5,
+    borderWidth: 3,
     borderColor: "#00ffff",
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.8)",
     alignItems: "center",
     justifyContent: "center",
   },
-  northMarker: {
+  northMarker: { position: "absolute", top: 4, alignItems: "center" },
+  nText: { color: "#00ffff", fontSize: 16, fontWeight: "900" },
+  dotMarker: {
     position: "absolute",
-    top: 2,
-    alignItems: "center",
-  },
-  nText: {
-    color: "#00ffff",
-    fontSize: 14,
-    fontWeight: "900",
+    bottom: 6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.3)",
   },
   fixedIndicator: {
     position: "absolute",
-    top: -5,
+    top: -4,
     width: 4,
-    height: 15,
+    height: 16,
     backgroundColor: "#ff3333",
     borderRadius: 2,
     zIndex: 2001,
   },
-  centerContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   targetBox: {
     width: 240,
     padding: 30,
-    backgroundColor: "rgba(0,0,0,0.85)",
-    borderRadius: 4,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    borderRadius: 2,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
@@ -157,8 +151,5 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     opacity: 0.8,
   },
-  arrowIcon: {
-    color: "#fff",
-    fontSize: 48,
-  },
+  arrowIcon: { color: "#fff", fontSize: 48 },
 });
