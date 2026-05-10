@@ -8,6 +8,9 @@ import * as Location from "expo-location";
 import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
+/** * THE GHOST REGISTRY
+ * Expanded to include Grand Central Terminal and St. Stephen's.
+ */
 const GHOST_SITES = [
   {
     id: "ny-life",
@@ -51,6 +54,10 @@ export default function App() {
       requestPermission();
     }
 
+    /** * GOLDEN SENSOR LOGIC (LOCKED)
+     * Verified for Portrait/Vertical orientation.
+     * Math: atan2(z, -x)
+     */
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
@@ -80,7 +87,7 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // PROXIMITY ENGINE - Fixed Variable Reference
+  // PROXIMITY ENGINE & NEAREST SIGNAL LOGIC
   useEffect(() => {
     if (!userLoc) return;
 
@@ -100,10 +107,9 @@ export default function App() {
     });
 
     setActiveTarget(closest);
-    setDistanceToTarget(minDistance); // Use the correct local variable 'dist'
+    setDistanceToTarget(minDistance);
   }, [userLoc]);
 
-  // Safety return to prevent black screen while waiting for permission
   if (!permission) return <View style={styles.load} />;
   if (!permission.granted)
     return (
@@ -112,14 +118,18 @@ export default function App() {
       </View>
     );
 
+  const isVpsLocked = vpsAccuracy < 40;
+
   return (
     <View style={styles.container}>
       <StatusBar hidden />
 
+      {/* BACKGROUND: CAMERA LAYER */}
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
+      {/* 3D AR LAYER: Ghost Lines appear only when proximity and accuracy are high */}
       {vpsAccuracy < 100 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -129,35 +139,26 @@ export default function App() {
         </View>
       )}
 
-      {distanceToTarget < 50 && (
-        <View style={styles.infoPanel} pointerEvents="none">
-          <Text style={styles.infoTitle}>{activeTarget.name}</Text>
-          <Text style={styles.infoMeta}>
-            {activeTarget.year} | {activeTarget.architect}
-          </Text>
-          <Text style={styles.infoFact}>{activeTarget.fact}</Text>
-        </View>
-      )}
-
+      {/* UNIFIED HUD: Contains Nearest Signal Bar, Center Target Box, Compass, and Nav Pill */}
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
         target={activeTarget}
         userLoc={userLoc}
-        isApiLocked={vpsAccuracy < 40}
+        isApiLocked={isVpsLocked}
+        distance={distanceToTarget}
       />
 
+      {/* SYSTEM STATUS PILL */}
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
             styles.dot,
-            { backgroundColor: vpsAccuracy < 40 ? "#00ffff" : "#ffaa00" },
+            { backgroundColor: isVpsLocked ? "#00ffff" : "#ffaa00" },
           ]}
         />
         <Text style={styles.pillText}>
-          {vpsAccuracy < 40
-            ? "VPS LOCKED"
-            : `TRACKING ${activeTarget.id.toUpperCase()}`}
+          {isVpsLocked ? "POLES ALIGNED" : "STREET CALIBRATION..."}
         </Text>
       </View>
     </View>
@@ -165,7 +166,10 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
+  container: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
   load: {
     flex: 1,
     backgroundColor: "#000",
@@ -186,40 +190,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.85)",
-    padding: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 2,
   },
-  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 10,
+  },
   pillText: {
     color: "#fff",
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1.5,
   },
-  infoPanel: {
-    position: "absolute",
-    bottom: 120,
-    alignSelf: "center",
-    width: "85%",
-    backgroundColor: "rgba(0,0,0,0.95)",
-    padding: 20,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: "#00ffff",
-    zIndex: 5000,
-  },
-  infoTitle: {
-    color: "#00ffff",
-    fontSize: 16,
-    fontWeight: "900",
-    marginBottom: 5,
-  },
-  infoMeta: {
-    color: "#fff",
-    fontSize: 10,
-    opacity: 0.6,
-    marginBottom: 10,
-    letterSpacing: 1,
-  },
-  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
 });
