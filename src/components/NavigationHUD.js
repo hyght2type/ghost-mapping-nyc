@@ -8,15 +8,14 @@ export function NavigationHUD({
   magHeading,
   target,
   userLoc,
-  isActive,
   isApiLocked,
 }) {
   if (!userLoc || !target) return null;
 
-  // Compass: Simple, non-inverted rotation
+  // COMPASS: True North (Independent of targeting)
   const compassRotation = (360 - magHeading) % 360;
 
-  // Bearing Calculation
+  // TARGETING: Bearing to the NY Life Building
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -27,13 +26,14 @@ export function NavigationHUD({
   if (diff > 180) diff -= 360;
   if (diff < -180) diff += 360;
 
+  // TARGET LOCK: Arrow points UP (0deg) when facing the building
   const isOnTarget = isApiLocked || Math.abs(diff) < 25;
   const arrowRotation = isOnTarget ? 0 : diff < 0 ? -90 : 90;
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-      {/* COMPASS */}
-      <View style={styles.compassContainer}>
+    <View style={styles.hudMaster} pointerEvents="box-none">
+      {/* COMPASS (Top Right) */}
+      <View style={styles.compassPos}>
         <View
           style={[
             styles.ring,
@@ -45,38 +45,45 @@ export function NavigationHUD({
         </View>
       </View>
 
-      {/* TARGET BOX */}
-      {!isActive && (
-        <View style={styles.center} pointerEvents="none">
-          <View style={[styles.box, isOnTarget && styles.boxActive]}>
-            <Text style={styles.title}>{target.name}</Text>
-            <View
-              style={{
-                transform: [{ rotate: `${arrowRotation}deg` }],
-                marginVertical: 15,
-              }}
-            >
-              <Text style={[styles.arrow, isOnTarget && { color: "#00ffff" }]}>
-                ▲
-              </Text>
-            </View>
-            <Text style={styles.instr}>
-              {isOnTarget
-                ? "TARGET LOCKED"
-                : diff < 0
-                  ? "SCAN LEFT"
-                  : "SCAN RIGHT"}
+      {/* TARGETING RETICLE (Center) */}
+      <View style={styles.centerContainer} pointerEvents="none">
+        <View style={[styles.box, isOnTarget && styles.boxActive]}>
+          <Text style={styles.title}>{target.name}</Text>
+
+          <View
+            style={{
+              transform: [{ rotate: `${arrowRotation}deg` }],
+              marginVertical: 20,
+            }}
+          >
+            <Text style={[styles.arrow, isOnTarget && { color: "#00ffff" }]}>
+              ▲
             </Text>
           </View>
+
+          <Text style={styles.instr}>
+            {isOnTarget
+              ? "TARGET LOCKED"
+              : diff < 0
+                ? "SCAN LEFT"
+                : "SCAN RIGHT"}
+          </Text>
         </View>
-      )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 1000 },
-  compassContainer: { position: "absolute", top: 60, right: 30 },
+  hudMaster: {
+    position: "absolute",
+    width: width,
+    height: height,
+    top: 0,
+    left: 0,
+    zIndex: 1000,
+  },
+  compassPos: { position: "absolute", top: 60, right: 30 },
   ring: {
     width: 60,
     height: 60,
@@ -95,18 +102,18 @@ const styles = StyleSheet.create({
     top: 4,
   },
   needle: { width: 2, height: 26, backgroundColor: "#ff3333", marginTop: 10 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  centerContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   box: {
     width: 240,
     padding: 30,
-    backgroundColor: "rgba(0,0,0,0.8)",
-    borderRadius: 4,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    borderRadius: 2,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
   },
-  boxActive: { borderColor: "#00ffff" },
+  boxActive: { borderColor: "#00ffff", backgroundColor: "rgba(0,255,255,0.1)" },
   title: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 2 },
-  instr: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.7 },
-  arrow: { color: "#fff", fontSize: 42 },
+  instr: { color: "#fff", fontSize: 10, fontWeight: "bold", opacity: 0.8 },
+  arrow: { color: "#fff", fontSize: 48 },
 });
