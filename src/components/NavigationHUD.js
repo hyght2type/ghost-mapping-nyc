@@ -46,7 +46,7 @@ export function NavigationHUD({
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* TARGETING BOX */}
+      {/* CENTER TARGETING BOX */}
       <View style={styles.centerContainer} pointerEvents="none">
         <View style={[styles.targetBox, isOnTarget && styles.targetBoxActive]}>
           <Text style={styles.buildingName}>{target.name}</Text>
