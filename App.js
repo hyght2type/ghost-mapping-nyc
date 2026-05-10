@@ -24,14 +24,15 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * FIXED ORIENTATION MATH:
-     * Swapping x and y (atan2(x, y)) is the standard fix for Portrait mode
-     * compasses on iOS to ensure East/West aren't rotated by 90 degrees.
+    /** * THE RE-MAPPING FIX:
+     * Based on your feedback, the axes were cross-wired.
+     * atan2(-data.x, data.y) performs a 90-degree swap and an inversion
+     * to realign the Portrait vector with the sensor core.
      */
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
-      let angle = Math.atan2(data.x, data.y) * (180 / Math.PI);
-      // Offset for NYC Declination
+      let angle = Math.atan2(-data.x, data.y) * (180 / Math.PI);
+      // Offset for NYC Declination (13°)
       setMagHeading((angle + 360 + 13.0) % 360);
     });
 
@@ -58,7 +59,7 @@ export default function App() {
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>SYNCING AR SYSTEM...</Text>
+        <Text style={{ color: "#0ff" }}>ALIGNING SENSORS...</Text>
       </View>
     );
 
@@ -66,12 +67,10 @@ export default function App() {
     <View style={styles.container}>
       <StatusBar hidden />
 
-      {/* 1. CAMERA */}
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 2. 3D GHOST */}
       {isVpsLocked && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -81,7 +80,6 @@ export default function App() {
         </View>
       )}
 
-      {/* 3. NAVIGATION HUD */}
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
@@ -90,7 +88,6 @@ export default function App() {
         isApiLocked={isVpsLocked}
       />
 
-      {/* 4. API STATUS PILL */}
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
@@ -121,7 +118,7 @@ const styles = StyleSheet.create({
     zIndex: 3000,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     padding: 10,
     borderRadius: 2,
   },
