@@ -12,10 +12,10 @@ export function NavigationHUD({
 }) {
   if (!userLoc || !target) return null;
 
-  // HEADING-UP: Ring rotates to keep 'N' pointing at real-world North.
+  // HEADING-UP: The ring rotates to keep 'N' pointing at the real North.
   const ringRotation = (360 - magHeading) % 360;
 
-  // TARGETING MATH: Using Haversine-style delta for bearing
+  // TARGETING MATH
   const dy = target.coords.latitude - userLoc.latitude;
   const dx =
     Math.cos((userLoc.latitude * Math.PI) / 180) *
@@ -31,7 +31,7 @@ export function NavigationHUD({
 
   return (
     <View style={styles.hudWrapper} pointerEvents="box-none">
-      {/* COMPASS CONTAINER */}
+      {/* HEADING-UP COMPASS */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -43,7 +43,7 @@ export function NavigationHUD({
             <Text style={styles.nText}>N</Text>
           </View>
         </View>
-        {/* FIXED INDICATOR: Line of sight */}
+        {/* FIXED INDICATOR: Line of sight through the camera */}
         <View style={styles.fixedIndicator} />
       </View>
 

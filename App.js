@@ -24,16 +24,16 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * THE RE-MAPPING FIX:
-     * Based on your feedback, the axes were cross-wired.
-     * atan2(-data.x, data.y) performs a 90-degree swap and an inversion
-     * to realign the Portrait vector with the sensor core.
+    /** * VERTICAL AR FIX:
+     * When holding the phone up (Portrait), we must use the Z-axis
+     * (pointing out of the screen) and X-axis (horizontal).
+     * atan2(-data.z, data.x) aligns the heading with the Camera view.
      */
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
-      let angle = Math.atan2(-data.x, data.y) * (180 / Math.PI);
-      // Offset for NYC Declination (13°)
-      setMagHeading((angle + 360 + 13.0) % 360);
+      let angle = Math.atan2(-data.z, data.x) * (180 / Math.PI);
+      // NYC Declination (13°) + 90 degree offset for Portrait correction
+      setMagHeading((angle + 360 + 90.0 + 13.0) % 360);
     });
 
     (async () => {
@@ -59,7 +59,7 @@ export default function App() {
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>ALIGNING SENSORS...</Text>
+        <Text style={{ color: "#0ff" }}>RE-CALIBRATING FOR PORTRAIT...</Text>
       </View>
     );
 
