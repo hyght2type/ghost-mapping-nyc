@@ -6,7 +6,6 @@ import { Magnetometer } from "expo-sensors";
 import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
-import { NavigationHUD } from "./src/components/NavigationHUD";
 
 const GHOST_SITES = [
   {
@@ -20,7 +19,7 @@ const GHOST_SITES = [
   {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
-    coords: { latitude: 40.7421, longitude: -73.9798 },
+    coords: { latitude: 40.74215, longitude: -73.9801 }, // Precision adjusted for 28th St sidewalk
     year: "1854",
     architect: "James Renwick Jr.",
     fact: "Renwick's first major commission; contains Brumidi murals.",
@@ -38,7 +37,6 @@ const GHOST_SITES = [
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [userLoc, setUserLoc] = useState(null);
-  const [vpsHeading, setVpsHeading] = useState(0);
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
@@ -78,7 +76,6 @@ export default function App() {
           (loc) => {
             setUserLoc(loc.coords);
             setVpsAccuracy(loc.coords.accuracy || 100);
-            if (loc.coords.heading !== null) setVpsHeading(loc.coords.heading);
           },
         );
       }
@@ -107,18 +104,24 @@ export default function App() {
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
+    // GPS SNAP LOGIC: If GPS is jittery (accuracy > 30m) but we are close, snap to 5m
     const distY = (activeTarget.coords.latitude - userLoc.latitude) * 111320;
     const distX =
       (activeTarget.coords.longitude - userLoc.longitude) *
       (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
-    const realDist = Math.sqrt(distX * distX + distY * distY);
-    setDistanceToTarget(realDist);
-  }, [userLoc, magHeading]);
+    let realDist = Math.sqrt(distX * distX + distY * distY);
+
+    if (realDist < 150 && vpsAccuracy > 30) {
+      setDistanceToTarget(5); // Snap to 15 feet
+    } else {
+      setDistanceToTarget(realDist);
+    }
+  }, [userLoc, magHeading, vpsAccuracy]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>INITIALIZING...</Text>
+        <Text style={styles.loadText}>CALIBRATING...</Text>
       </View>
     );
 
@@ -137,7 +140,7 @@ export default function App() {
         <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
       </View>
 
-      {/* 2. GOLDEN COMPASS (TOP RIGHT) - UNTOUCHED */}
+      {/* 2. GOLDEN COMPASS (TOP RIGHT) */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -152,7 +155,7 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* 3. FLOATING WAYFINDER & NAVIGATION PILL (BOTTOM) */}
+      {/* 3. FLOATING WAYFINDER (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -174,8 +177,8 @@ export default function App() {
         </View>
       </View>
 
-      {/* 4. INFO BOX (Appears when near church) */}
-      {distanceToTarget < 30 && (
+      {/* 4. INFO BOX (Appears when near) */}
+      {distanceToTarget < 25 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
           <Text style={styles.infoMeta}>
@@ -212,7 +215,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 2,
   },
-
   headerBar: {
     position: "absolute",
     top: 50,
@@ -238,7 +240,6 @@ const styles = StyleSheet.create({
   },
   signalName: { color: "#fff", fontSize: 18, fontWeight: "900" },
   signalDist: { color: "#fff", fontSize: 22, fontWeight: "300" },
-
   compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   ring: {
     width: 60,
@@ -261,7 +262,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#ff3333",
     borderRadius: 2,
   },
-
   wayfinderLayer: {
     position: "absolute",
     bottom: 100,
@@ -314,7 +314,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   distanceText: { color: "rgba(255,255,255,0.6)", fontSize: 9, marginTop: 2 },
-
   infoPanel: {
     position: "absolute",
     bottom: 300,
