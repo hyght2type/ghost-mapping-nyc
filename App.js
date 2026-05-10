@@ -9,7 +9,7 @@ import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
 /** * THE GHOST REGISTRY
- * Coordinates refined for 142 E 28th St entrance.
+ * Expanded to include Grand Central Terminal.
  */
 const GHOST_SITES = [
   {
@@ -28,6 +28,14 @@ const GHOST_SITES = [
     architect: "James Renwick Jr.",
     fact: "Renwick's first major commission; contains Brumidi murals.",
   },
+  {
+    id: "grand-central",
+    name: "GRAND CENTRAL TERMINAL",
+    coords: { latitude: 40.7527, longitude: -73.9772 },
+    year: "1913",
+    architect: "Reed and Stem",
+    fact: "The celestial ceiling mural is actually painted backwards.",
+  },
 ];
 
 export default function App() {
@@ -37,7 +45,7 @@ export default function App() {
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
-  const [distanceToTarget, setDistanceToTarget] = useState(5);
+  const [distanceToTarget, setDistanceToTarget] = useState(100);
 
   const lastHeading = useRef(0);
 
@@ -74,11 +82,11 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // PROXIMITY ENGINE & PANEL TRIGGER
+  // PROXIMITY ENGINE
   useEffect(() => {
     if (!userLoc) return;
 
-    let closest = GHOST_SITES[1];
+    let closest = GHOST_SITES[0];
     let minDistance = Infinity;
 
     GHOST_SITES.forEach((site) => {
@@ -94,13 +102,13 @@ export default function App() {
     });
 
     setActiveTarget(closest);
-    setDistanceToTarget(minDistance);
+    setDistanceToTarget(distance);
   }, [userLoc]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>FORCING UI RESTORATION...</Text>
+        <Text style={styles.loadText}>CALIBRATING REGISTRY...</Text>
       </View>
     );
 
@@ -122,7 +130,7 @@ export default function App() {
         </View>
       )}
 
-      {/* FIXED INFO PANEL: Triggered for anything under 50m */}
+      {/* INFO PANEL */}
       {distanceToTarget < 50 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
@@ -138,20 +146,20 @@ export default function App() {
         magHeading={magHeading}
         target={activeTarget}
         userLoc={userLoc}
-        isApiLocked={vpsAccuracy < 45}
+        isApiLocked={vpsAccuracy < 40}
       />
 
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
             styles.dot,
-            { backgroundColor: vpsAccuracy < 45 ? "#00ffff" : "#ffaa00" },
+            { backgroundColor: vpsAccuracy < 40 ? "#00ffff" : "#ffaa00" },
           ]}
         />
         <Text style={styles.pillText}>
-          {vpsAccuracy < 45
-            ? "STABLE LOCK"
-            : `SCANNING: ${activeTarget.id.toUpperCase()}`}
+          {vpsAccuracy < 40
+            ? "VPS LOCKED"
+            : `TRACKING ${activeTarget.id.toUpperCase()}`}
         </Text>
       </View>
     </View>
@@ -200,7 +208,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     borderWidth: 1,
     borderColor: "#00ffff",
-    zIndex: 5000, // Highest priority layer
+    zIndex: 5000,
   },
   infoTitle: {
     color: "#00ffff",
