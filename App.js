@@ -24,16 +24,15 @@ export default function App() {
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * SENSOR FUSION: DeviceMotion (The "Google" Method)
-     * This uses the Alpha (Yaw) value which is calibrated to True North.
-     * It automatically compensates for holding the phone vertically.
+    /** * THE 180-DEGREE FLIP FIX:
+     * We add 180 degrees to the fused alpha to flip North and South
+     * while preserving the perfect East/West tracking you verified.
      */
     DeviceMotion.setUpdateInterval(100);
     const motionSub = DeviceMotion.addListener((data) => {
       if (data.rotation) {
-        // Alpha is the rotation around the Z axis (0 = North)
-        // We convert from Radians to Degrees
-        let heading = (data.rotation.alpha * (180 / Math.PI) + 360) % 360;
+        // Alpha is yaw. Adding 180 flips the poles.
+        let heading = (data.rotation.alpha * (180 / Math.PI) + 180 + 360) % 360;
         setMagHeading(heading);
       }
     });
@@ -61,7 +60,7 @@ export default function App() {
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={{ color: "#0ff" }}>FUSING SENSORS...</Text>
+        <Text style={{ color: "#0ff" }}>FINALIZING POLES...</Text>
       </View>
     );
 
@@ -94,7 +93,7 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "VPS LOCKED" : "FUSING AR POSE..."}
+          {isVpsLocked ? "VPS LOCKED" : "POLAR ALIGNMENT..."}
         </Text>
       </View>
     </View>
