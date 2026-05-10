@@ -9,7 +9,7 @@ import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
 /** * THE GHOST REGISTRY
- * Refined coordinates for the 28th St entrance of St. Stephen's.
+ * Coordinates refined for 142 E 28th St entrance.
  */
 const GHOST_SITES = [
   {
@@ -23,10 +23,10 @@ const GHOST_SITES = [
   {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
-    coords: { latitude: 40.7421, longitude: -73.9798 }, // Precise 28th St sidewalk entry
+    coords: { latitude: 40.7421, longitude: -73.9798 },
     year: "1854",
     architect: "James Renwick Jr.",
-    fact: "Renwick's first major commission after St. Patrick's Cathedral.",
+    fact: "Renwick's first major commission; contains Brumidi murals.",
   },
 ];
 
@@ -37,14 +37,16 @@ export default function App() {
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
-  const [distanceToTarget, setDistanceToTarget] = useState(5); // Start at 15ft
+  const [distanceToTarget, setDistanceToTarget] = useState(5);
 
   const lastHeading = useRef(0);
 
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    // GOLDEN SENSOR LOGIC (LOCKED - ATAN2 Z, -X)
+    /** * GOLDEN COMPASS LOGIC - VERIFIED PORTRAIT (Vertical) Orientation
+     * Math: atan2(z, -x)
+     */
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
@@ -74,11 +76,11 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // PROXIMITY ENGINE: Widened for high-interference urban blocks
+  // PROXIMITY ENGINE & DYNAMIC DISTANCE SCALING
   useEffect(() => {
     if (!userLoc) return;
 
-    let closest = GHOST_SITES[1]; // Default to Church while you're there
+    let closest = GHOST_SITES[1];
     let minDistance = Infinity;
 
     GHOST_SITES.forEach((site) => {
@@ -94,13 +96,14 @@ export default function App() {
     });
 
     setActiveTarget(closest);
-    setDistanceToTarget(Math.max(4, minDistance)); // Clamping to 4m so lines don't clip your face
+    // Clamp distance to 4m so 3D lines don't clip through the camera when standing 15ft away
+    setDistanceToTarget(Math.max(4, minDistance));
   }, [userLoc]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>CALIBRATING SCAN...</Text>
+        <Text style={styles.loadText}>CALIBRATING GHOST CORE...</Text>
       </View>
     );
 
@@ -112,18 +115,19 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 3D CANVAS: Forced visibility for close-range inspection */}
+      {/* 3D CANVAS: Accuracy threshold relaxed to 100m for urban skyscrapers */}
       {vpsAccuracy < 100 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
-            <GhostBuilding distance={distanceToTarget} level={true} />
+            {/* Building sits at the actual measured distance */}
+            <GhostBuilding distance={distanceToTarget} />
           </Canvas>
         </View>
       )}
 
-      {/* INFO PANEL: Forced trigger for immediate feedback */}
-      {distanceToTarget < 40 && (
+      {/* INFO PANEL: Forced trigger when close to site */}
+      {distanceToTarget < 45 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
           <Text style={styles.infoMeta}>
@@ -141,6 +145,7 @@ export default function App() {
         isApiLocked={vpsAccuracy < 45}
       />
 
+      {/* STATUS PILL */}
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
