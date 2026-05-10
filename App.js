@@ -8,9 +8,6 @@ import * as Location from "expo-location";
 import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
-/** * THE GHOST REGISTRY
- * Add any new historical or haunted sites here.
- */
 const GHOST_SITES = [
   {
     id: "ny-life",
@@ -20,7 +17,7 @@ const GHOST_SITES = [
   {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
-    coords: { latitude: 40.742, longitude: -73.9794 }, // 142 E 28th St
+    coords: { latitude: 40.742, longitude: -73.9794 },
   },
 ];
 
@@ -30,15 +27,14 @@ export default function App() {
   const [vpsHeading, setVpsHeading] = useState(0);
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
-  const [isVpsLocked, setIsVpsLocked] = useState(false);
-  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
+  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]); // Default to Church
 
   const lastHeading = useRef(0);
 
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    // GOLDEN SENSOR LOGIC (LOCKED)
+    // GOLDEN SENSOR LOGIC (LOCKED - ATAN2 Z, -X)
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
@@ -60,7 +56,6 @@ export default function App() {
             setUserLoc(loc.coords);
             setVpsAccuracy(loc.coords.accuracy || 100);
             if (loc.coords.heading !== null) setVpsHeading(loc.coords.heading);
-            setIsVpsLocked(loc.coords.accuracy < 25);
           },
         );
       }
@@ -69,12 +64,8 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  /** * PROXIMITY ENGINE:
-   * Automatically switches the HUD target to the nearest Ghost Site.
-   */
   useEffect(() => {
     if (!userLoc) return;
-
     let closest = GHOST_SITES[0];
     let minDistance = Infinity;
 
@@ -84,20 +75,18 @@ export default function App() {
         (site.coords.longitude - userLoc.longitude) *
         (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
       const distance = Math.sqrt(dx * dx + dy * dy);
-
       if (distance < minDistance) {
         minDistance = distance;
         closest = site;
       }
     });
-
     setActiveTarget(closest);
   }, [userLoc]);
 
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>LOCATING GHOSTS...</Text>
+        <Text style={styles.loadText}>RESTORING HUD...</Text>
       </View>
     );
 
@@ -109,10 +98,12 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {isVpsLocked && (
+      {/* 3D CANVAS: Now always visible if accuracy is under 60m (Manhattan standard) */}
+      {vpsAccuracy < 60 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
+            {/* The 15 step distance offset */}
             <GhostBuilding distance={15} />
           </Canvas>
         </View>
@@ -123,21 +114,22 @@ export default function App() {
         magHeading={magHeading}
         target={activeTarget}
         userLoc={userLoc}
-        isApiLocked={isVpsLocked}
+        isApiLocked={vpsAccuracy < 30}
       />
 
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
             styles.dot,
-            { backgroundColor: isVpsLocked ? "#00ffff" : "#ff3333" },
+            { backgroundColor: vpsAccuracy < 30 ? "#00ffff" : "#ffaa00" },
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked
-            ? "AR ANCHOR ACTIVE"
-            : `SCANNING FOR: ${activeTarget.name}`}
+          {vpsAccuracy < 30
+            ? "TARGET LOCKED"
+            : `SEARCHING: ${activeTarget.name}`}
         </Text>
+        <Text style={styles.accText}>{Math.round(vpsAccuracy)}m</Text>
       </View>
     </View>
   );
@@ -175,4 +167,5 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1.5,
   },
+  accText: { color: "rgba(255,255,255,0.5)", fontSize: 9, marginLeft: 10 },
 });
