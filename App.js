@@ -8,14 +8,21 @@ import * as Location from "expo-location";
 import { GhostBuilding } from "./src/components/GhostBuilding";
 import { NavigationHUD } from "./src/components/NavigationHUD";
 
-/**
- * PROJECT ANCHOR: NY LIFE / MSG II
- * Coordinates verified for Manhattan street grid alignment.
+/** * THE GHOST REGISTRY
+ * Add any new historical or haunted sites here.
  */
-const TARGET_SITE = {
-  name: "NY LIFE / MSG II",
-  coords: { latitude: 40.7427, longitude: -73.9856 },
-};
+const GHOST_SITES = [
+  {
+    id: "ny-life",
+    name: "NY LIFE / MSG II",
+    coords: { latitude: 40.7427, longitude: -73.9856 },
+  },
+  {
+    id: "st-stephens",
+    name: "ST. STEPHEN'S CHURCH",
+    coords: { latitude: 40.742, longitude: -73.9794 }, // 142 E 28th St
+  },
+];
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -24,38 +31,23 @@ export default function App() {
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [isVpsLocked, setIsVpsLocked] = useState(false);
+  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
 
-  // Smoothing ref to prevent needle jitter in high-interference urban areas
   const lastHeading = useRef(0);
 
   useEffect(() => {
     if (permission && !permission.granted) requestPermission();
 
-    /** * CRITICAL: GOLDEN SENSOR BLOCK - DO NOT ALTER AXIS MAPPING
-     * --------------------------------------------------------
-     * Verified on-site (NYC) for Vertical AR orientation.
-     * Math: atan2(z, -x)
-     * Z-axis: Depth/Forward from back camera.
-     * -X-axis: Inverted horizontal to correct for mirror/portrait mode.
-     * 13.0: NYC Magnetic Declination constant.
-     */
+    // GOLDEN SENSOR LOGIC (LOCKED)
     Magnetometer.setUpdateInterval(100);
     const magSub = Magnetometer.addListener((data) => {
-      // The Winning Formula for Manhattan Grid alignment:
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-
-      // Full Calibration (90 deg offset + 13 deg declination)
       let heading = (angle + 360 + 13.0) % 360;
-
-      // Low-pass filter (30% new data / 70% historical)
       const smoothed = lastHeading.current * 0.7 + heading * 0.3;
       lastHeading.current = smoothed;
       setMagHeading(smoothed);
     });
 
-    /** * GEOSPATIAL API LOCK:
-     * High-precision urban tracking using Google VPS signals.
-     */
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -68,8 +60,6 @@ export default function App() {
             setUserLoc(loc.coords);
             setVpsAccuracy(loc.coords.accuracy || 100);
             if (loc.coords.heading !== null) setVpsHeading(loc.coords.heading);
-
-            // Lock threshold set to 25 meters for skyscraper environments
             setIsVpsLocked(loc.coords.accuracy < 25);
           },
         );
@@ -79,11 +69,35 @@ export default function App() {
     return () => magSub.remove();
   }, [permission]);
 
-  // Loading state for initial sensor calibration
+  /** * PROXIMITY ENGINE:
+   * Automatically switches the HUD target to the nearest Ghost Site.
+   */
+  useEffect(() => {
+    if (!userLoc) return;
+
+    let closest = GHOST_SITES[0];
+    let minDistance = Infinity;
+
+    GHOST_SITES.forEach((site) => {
+      const dy = (site.coords.latitude - userLoc.latitude) * 111320;
+      const dx =
+        (site.coords.longitude - userLoc.longitude) *
+        (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closest = site;
+      }
+    });
+
+    setActiveTarget(closest);
+  }, [userLoc]);
+
   if (!permission?.granted)
     return (
       <View style={styles.load}>
-        <Text style={styles.loadText}>INITIALIZING AR CORE...</Text>
+        <Text style={styles.loadText}>LOCATING GHOSTS...</Text>
       </View>
     );
 
@@ -91,12 +105,10 @@ export default function App() {
     <View style={styles.container}>
       <StatusBar hidden />
 
-      {/* LAYER 1: LIVE CAMERA FEED (BACK-FACING) */}
       <View style={StyleSheet.absoluteFill}>
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* LAYER 2: 3D AR OVERLAY - Active only when VPS signal is locked */}
       {isVpsLocked && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -106,16 +118,14 @@ export default function App() {
         </View>
       )}
 
-      {/* LAYER 3: NAVIGATION HUD & COMPASS (STABLE VERSION) */}
       <NavigationHUD
         vpsHeading={vpsHeading}
         magHeading={magHeading}
-        target={TARGET_SITE}
+        target={activeTarget}
         userLoc={userLoc}
         isApiLocked={isVpsLocked}
       />
 
-      {/* LAYER 4: SYSTEM STATUS PILL */}
       <View style={styles.statusPill} pointerEvents="none">
         <View
           style={[
@@ -124,7 +134,9 @@ export default function App() {
           ]}
         />
         <Text style={styles.pillText}>
-          {isVpsLocked ? "POLES RE-INDEXED" : "CORRECTING OFFSET..."}
+          {isVpsLocked
+            ? "AR ANCHOR ACTIVE"
+            : `SCANNING FOR: ${activeTarget.name}`}
         </Text>
       </View>
     </View>
@@ -132,10 +144,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
+  container: { flex: 1, backgroundColor: "#000" },
   load: {
     flex: 1,
     backgroundColor: "#000",
@@ -156,16 +165,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.85)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    padding: 10,
     borderRadius: 2,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 10,
-  },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
   pillText: {
     color: "#fff",
     fontSize: 10,
