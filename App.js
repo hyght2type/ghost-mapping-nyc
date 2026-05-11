@@ -63,6 +63,9 @@ export default function App() {
   const [autoRadarActive, setAutoRadarActive] = useState(true);
   const [inRange, setInRange] = useState(false);
 
+  // NEW: State to track which buildings have been captured
+  const [capturedGhosts, setCapturedGhosts] = useState([]);
+
   const [distanceToTarget, setDistanceToTarget] = useState(0);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState(
@@ -87,13 +90,13 @@ export default function App() {
     my: 0,
     mz: 0,
   }).current;
-
-  // Dedicated state buffer to strictly isolate the 2D compass math from the 3D Wayfinder math
   const compassSensors = useRef({ x: 0, z: 0 }).current;
 
-  // MASTER SETTINGS
+  // MASTER SETTINGS (Untouched)
   const GLOBAL_YAW_OFFSET = -15.0;
   const MAX_DETECTION_RADIUS = 150;
+  // NEW: Capture Threshold
+  const CAPTURE_RADIUS = 15; // Meters (approx 50 feet)
 
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
@@ -122,12 +125,10 @@ export default function App() {
     });
 
     const magSub = Magnetometer.addListener((data) => {
-      // 1. Wayfinder Stream (Transformed Aeronautical Axes)
       sensors.mx = lowPass(-data.z, sensors.mx, 0.1);
       sensors.my = lowPass(data.x, sensors.my, 0.1);
       sensors.mz = lowPass(-data.y, sensors.mz, 0.1);
 
-      // 2. Golden Compass Stream (Restored, Pure Portrait Axes)
       compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
       compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
 
@@ -153,7 +154,11 @@ export default function App() {
 
       const euler = madgwick.getEulerAngles();
       let fusedHeading =
-        (euler.heading * (180 / Math.PI) + 360 + 13.0 + GLOBAL_YAW_OFFSET) %
+        (euler.heading * (180 / Math.PI) +
+          180 +
+          360 +
+          13.0 +
+          GLOBAL_YAW_OFFSET) %
         360;
 
       if (!isNaN(fusedHeading)) {
@@ -202,7 +207,6 @@ export default function App() {
     };
   }, [permission]);
 
-  // AUTO-TARGETING & GEOFENCE LOGIC
   useEffect(() => {
     if (!userLoc) return;
 
@@ -234,7 +238,6 @@ export default function App() {
     }
   }, [userLoc, autoRadarActive, activeTarget]);
 
-  // WAYFINDER MATH
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
@@ -251,8 +254,12 @@ export default function App() {
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
+    const hasBeenCaptured = capturedGhosts.includes(activeTarget.id);
+
     if (!inRange) {
       setTurnInstruction("SIGNAL LOST // APPROACH TARGET");
+    } else if (hasBeenCaptured) {
+      setTurnInstruction("SIGNAL CONTAINED");
     } else {
       if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
       else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
@@ -264,7 +271,7 @@ export default function App() {
     const realDist = Math.sqrt(distX * distX + distY * distY);
 
     if (!isNaN(realDist)) setDistanceToTarget(realDist);
-  }, [userLoc, trueHeading, activeTarget, inRange]);
+  }, [userLoc, trueHeading, activeTarget, inRange, capturedGhosts]);
 
   const cycleTarget = () => {
     setAutoRadarActive(false);
@@ -275,6 +282,13 @@ export default function App() {
     setActiveTarget(GHOST_SITES[nextIndex]);
   };
 
+  // NEW: Capture Execution Logic
+  const handleCapture = () => {
+    if (!capturedGhosts.includes(activeTarget.id)) {
+      setCapturedGhosts([...capturedGhosts, activeTarget.id]);
+    }
+  };
+
   if (!permission?.granted) return <View style={styles.load} />;
 
   const safeDist = distanceToTarget || 0;
@@ -283,6 +297,9 @@ export default function App() {
 
   const safeFlatHeading = flatHeading || 0;
   const safeWayfinderRot = wayfinderRotation || 0;
+
+  const isCaptured = capturedGhosts.includes(activeTarget.id);
+  const readyToCapture = inRange && safeDist <= CAPTURE_RADIUS && !isCaptured;
 
   const ghostX = ghostAnimation.interpolate({
     inputRange: [0, 1],
@@ -304,7 +321,7 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {inRange && (
+      {inRange && !isCaptured && (
         <Animated.View
           style={[
             styles.ghostContainer,
@@ -320,19 +337,39 @@ export default function App() {
       )}
 
       <TouchableOpacity
-        style={[styles.headerBar, !inRange && styles.headerOut]}
+        style={[
+          styles.headerBar,
+          !inRange && styles.headerOut,
+          isCaptured && styles.headerCaptured,
+        ]}
         activeOpacity={0.7}
         onPress={cycleTarget}
       >
-        <Text style={[styles.headerLabel, !inRange && styles.textOut]}>
-          {autoRadarActive ? "RADAR: AUTO" : "RADAR: MANUAL"}{" "}
-          {inRange ? "// LOCKED" : "// OUT OF RANGE"}
+        <Text
+          style={[
+            styles.headerLabel,
+            !inRange && styles.textOut,
+            isCaptured && styles.textCaptured,
+          ]}
+        >
+          {autoRadarActive ? "RADAR: AUTO" : "RADAR: MANUAL"}
+          {isCaptured
+            ? " // CONTAINED"
+            : inRange
+              ? " // LOCKED"
+              : " // OUT OF RANGE"}
         </Text>
         <View style={styles.signalContent}>
           <Text style={[styles.signalSub, !inRange && styles.textOut]}>
             {activeTarget.year}
           </Text>
-          <Text style={[styles.signalName, !inRange && styles.textOut]}>
+          <Text
+            style={[
+              styles.signalName,
+              !inRange && styles.textOut,
+              isCaptured && styles.textCaptured,
+            ]}
+          >
             {activeTarget.name}
           </Text>
           <Text style={[styles.signalDist, !inRange && styles.textOut]}>
@@ -357,9 +394,11 @@ export default function App() {
 
       <View
         style={[styles.wayfinderLayer, !inRange && styles.wayfinderDim]}
-        pointerEvents="none"
+        pointerEvents={readyToCapture ? "auto" : "none"}
       >
-        <View style={styles.compassBase}>
+        <View
+          style={[styles.compassBase, isCaptured && styles.compassCaptured]}
+        >
           <View style={styles.lubberLine} />
           <View
             style={[
@@ -369,26 +408,67 @@ export default function App() {
               },
             ]}
           >
-            <Text style={[styles.targetIcon, !inRange && styles.iconOut]}>
-              ✦
+            <Text
+              style={[
+                styles.targetIcon,
+                !inRange && styles.iconOut,
+                isCaptured && styles.iconCaptured,
+              ]}
+            >
+              {isCaptured ? "✔" : "✦"}
             </Text>
-            <Text style={[styles.targetLabel, !inRange && styles.textOut]}>
-              {inRange ? "FRONT DOOR" : "NO SIGNAL"}
+            <Text
+              style={[
+                styles.targetLabel,
+                !inRange && styles.textOut,
+                isCaptured && styles.textCaptured,
+              ]}
+            >
+              {isCaptured ? "ARCHIVED" : inRange ? "FRONT DOOR" : "NO SIGNAL"}
             </Text>
           </View>
         </View>
-        <View style={[styles.instructionPill, !inRange && styles.pillOut]}>
-          <Text style={[styles.instructionText, !inRange && styles.textOut]}>
-            {turnInstruction}
-          </Text>
-        </View>
+
+        {/* THE CAPTURE BUTTON OVERRIDE */}
+        {readyToCapture ? (
+          <TouchableOpacity
+            style={styles.captureButton}
+            onPress={handleCapture}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.captureText}>⚡ CAPTURE SIGNAL ⚡</Text>
+          </TouchableOpacity>
+        ) : (
+          <View
+            style={[
+              styles.instructionPill,
+              !inRange && styles.pillOut,
+              isCaptured && styles.pillCaptured,
+            ]}
+          >
+            <Text
+              style={[
+                styles.instructionText,
+                !inRange && styles.textOut,
+                isCaptured && styles.textCaptured,
+              ]}
+            >
+              {turnInstruction}
+            </Text>
+          </View>
+        )}
       </View>
 
       {inRange && turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
-            <GhostBuilding distance={Math.max(6, safeDist)} />
+            {/* NEW: Passing siteId and isCaptured to the 3D model */}
+            <GhostBuilding
+              distance={Math.max(6, safeDist)}
+              siteId={activeTarget.id}
+              isCaptured={isCaptured}
+            />
           </Canvas>
         </View>
       )}
@@ -429,6 +509,10 @@ const styles = StyleSheet.create({
   headerOut: {
     borderLeftColor: "#ff3333",
     backgroundColor: "rgba(50,0,0,0.8)",
+  },
+  headerCaptured: {
+    borderLeftColor: "#ffd700",
+    backgroundColor: "rgba(50,40,0,0.8)",
   },
   headerLabel: {
     color: "#00ffff",
@@ -494,6 +578,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     overflow: "hidden",
   },
+  compassCaptured: { borderColor: "rgba(255,215,0,0.4)" },
   lubberLine: {
     position: "absolute",
     top: 0,
@@ -513,7 +598,9 @@ const styles = StyleSheet.create({
   targetIcon: { color: "#00ffff", fontSize: 28 },
   targetLabel: { color: "#00ffff", fontSize: 7, fontWeight: "900" },
   iconOut: { color: "#ff3333" },
+  iconCaptured: { color: "#ffd700" },
   textOut: { color: "#ffaaaa" },
+  textCaptured: { color: "#ffd700" },
 
   instructionPill: {
     marginTop: 15,
@@ -526,11 +613,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   pillOut: { borderColor: "#ff3333" },
+  pillCaptured: { borderColor: "#ffd700" },
   instructionText: {
     color: "#fff",
     fontSize: 13,
     fontWeight: "900",
     letterSpacing: 1,
+  },
+
+  captureButton: {
+    marginTop: 15,
+    backgroundColor: "rgba(0,255,255,0.2)",
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: "#00ffff",
+    alignItems: "center",
+    shadowColor: "#00ffff",
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
+  },
+  captureText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "900",
+    letterSpacing: 2,
   },
 
   infoPanel: {
