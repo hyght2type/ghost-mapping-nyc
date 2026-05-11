@@ -12,7 +12,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
 import { Magnetometer, Accelerometer, Gyroscope } from "expo-sensors";
 import * as Location from "expo-location";
-import AHRS from "ahrs"; // The Madgwick Engine
+import AHRS from "ahrs";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
 
@@ -36,28 +36,26 @@ export default function App() {
   const [userLoc, setUserLoc] = useState(null);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
 
-  // STATE: Driven by the Madgwick Filter
+  // STATE: Driven by the Madgwick Filter (3D Wayfinder)
   const [trueHeading, setTrueHeading] = useState(0);
+  // STATE: Driven by raw Magnetometer (2D Top-Right Compass)
+  const [flatHeading, setFlatHeading] = useState(0);
+
   const [distanceToTarget, setDistanceToTarget] = useState(0);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState(
     "CALIBRATING SENSORS...",
   );
 
-  // REFS FOR THE TRIAD ENGINE
   const activeTarget = GHOST_SITES[0];
   const lastHeadingRef = useRef(0);
   const wayfinderSmoothRef = useRef(0);
   const ghostAnimation = useRef(new Animated.Value(0)).current;
 
-  // INITIALIZE MADGWICK FILTER
-  // Beta = 0.1: Low trust in magnetic data (to ignore building interference), high trust in gyro.
-  // SampleInterval = 20ms (50Hz) for smooth AR rendering.
+  // Initialize Madgwick Filter
   const madgwick = useRef(
     new AHRS({ sampleInterval: 20, algorithm: "Madgwick", beta: 0.1 }),
   ).current;
-
-  // Sensor State Buffer
   const sensors = useRef({
     ax: 0,
     ay: 0,
@@ -74,12 +72,12 @@ export default function App() {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
-    // 1. SET HARDWARE POLLING TO 50Hz (20ms)
+    // 1. Set sensor polling to 50Hz
     Accelerometer.setUpdateInterval(20);
     Gyroscope.setUpdateInterval(20);
     Magnetometer.setUpdateInterval(20);
 
-    // 2. OPEN SENSOR STREAMS TO BUFFER
+    // 2. Open sensor streams
     const accSub = Accelerometer.addListener((data) => {
       sensors.ax = data.x;
       sensors.ay = data.y;
@@ -90,16 +88,20 @@ export default function App() {
       sensors.gy = data.y;
       sensors.gz = data.z;
     });
+
     const magSub = Magnetometer.addListener((data) => {
       sensors.mx = data.x;
       sensors.my = data.y;
       sensors.mz = data.z;
+
+      // GOLDEN COMPASS: Raw 2D Portrait Math
+      let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
+      let heading = (angle + 360 + 13.0) % 360;
+      setFlatHeading(heading);
     });
 
-    // 3. THE SENSOR FUSION LOOP
-    // We run the math strictly every 20ms to keep the quaternions stable.
+    // 3. Madgwick Fusion Loop
     const fusionLoop = setInterval(() => {
-      // Feed the triad into Madgwick (Gyro needs to be in rad/s, Expo does this natively)
       madgwick.update(
         sensors.gx,
         sensors.gy,
@@ -112,23 +114,23 @@ export default function App() {
         sensors.mz,
       );
 
-      // Extract the stabilized yaw (heading) from the quaternion
       const euler = madgwick.getEulerAngles();
 
-      // Convert Radians to Degrees, adjust for Portrait orientation offset, and add NYC Declination (-13 deg)
-      let fusedHeading = (euler.heading * (180 / Math.PI) + 360 + 13.0) % 360;
+      // FIX: +90 degrees added to correct the Portrait vs Flat axis misalignment
+      let fusedHeading =
+        (euler.heading * (180 / Math.PI) + 90 + 360 + 13.0) % 360;
 
       lastHeadingRef.current = fusedHeading;
       setTrueHeading(fusedHeading);
 
-      // Apply the viscous visual damping for the HUD disc
+      // Viscous damping for the UI
       const wayfinderDamping = 0.85;
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
         fusedHeading * (1 - wayfinderDamping);
     }, 20);
 
-    // 4. GPS TRACKING
+    // 4. GPS Tracking
     let locSub;
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -146,7 +148,7 @@ export default function App() {
       }
     })();
 
-    // GHOST ANIMATION
+    // Ghost Animation Loop
     Animated.loop(
       Animated.timing(ghostAnimation, {
         toValue: 1,
@@ -169,14 +171,14 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // BEARING MATH (Latitude Cosine Compensation)
+    // TARGET BEARING MATH
     const dLat = activeTarget.coords.latitude - userLoc.latitude;
     const dLon = activeTarget.coords.longitude - userLoc.longitude;
     const dy = dLat;
     const dx = dLon * Math.cos(userLoc.latitude * (Math.PI / 180));
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    // WAYFINDER ROTATION (Lens-Relative, driven by Madgwick)
+    // WAYFINDER ROTATION (Driven by fused trueHeading)
     let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relHeading);
 
@@ -185,12 +187,11 @@ export default function App() {
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    // Tighter lock threshold because Madgwick is highly stable
     if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // LIVE DISTANCE
+    // LIVE DISTANCE TRACKING
     const distY = dLat * 111320;
     const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
     const realDist = Math.sqrt(distX * distX + distY * distY);
@@ -199,9 +200,11 @@ export default function App() {
 
   if (!permission?.granted) return <View style={styles.load} />;
 
+  // Distance formatting
   const distFeet = Math.round(distanceToTarget * 3.28084);
   const distMeters = Math.round(distanceToTarget);
 
+  // Ghost interpolation
   const ghostX = ghostAnimation.interpolate({
     inputRange: [0, 1],
     outputRange: [-200, width + 200],
@@ -222,7 +225,7 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* THE FUN GHOST OVERLAY */}
+      {/* TEMP GHOST OVERLAY */}
       <Animated.View
         style={[
           styles.ghostContainer,
@@ -237,7 +240,7 @@ export default function App() {
         <Text style={styles.ghostText}>// RESIDUAL SIGNAL...</Text>
       </Animated.View>
 
-      {/* HEADER BAR (LIVE FEET/METERS) */}
+      {/* HEADER BAR */}
       <View style={styles.headerBar}>
         <Text style={styles.headerLabel}>{activeTarget.heritage}</Text>
         <View style={styles.signalContent}>
@@ -249,12 +252,12 @@ export default function App() {
         </View>
       </View>
 
-      {/* GOLDEN COMPASS (TOP RIGHT) - Driven strictly by the Fused Quaternion */}
+      {/* GOLDEN COMPASS (TOP RIGHT) - Driven by flatHeading */}
       <View style={styles.compassPosition}>
         <View
           style={[
             styles.ring,
-            { transform: [{ rotate: `${(360 - trueHeading) % 360}deg` }] },
+            { transform: [{ rotate: `${(360 - flatHeading) % 360}deg` }] },
           ]}
         >
           <View style={styles.northMarker}>
@@ -264,7 +267,7 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* WAYFINDER (BOTTOM) */}
+      {/* WAYFINDER (BOTTOM) - Driven by wayfinderRotation (Madgwick) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
