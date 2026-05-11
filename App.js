@@ -7,6 +7,7 @@ import {
   Animated,
   Easing,
   Dimensions,
+  TouchableOpacity,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
@@ -18,7 +19,6 @@ import { GhostBuilding } from "./src/components/GhostBuilding";
 
 const { width, height } = Dimensions.get("window");
 
-// 1. RESTORED THE FULL GHOST DATABASE
 const GHOST_SITES = [
   {
     id: "ny-life",
@@ -55,13 +55,15 @@ const GHOST_SITES = [
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [userLoc, setUserLoc] = useState(null);
-  const [vpsAccuracy, setVpsAccuracy] = useState(100);
 
   const [trueHeading, setTrueHeading] = useState(0);
   const [flatHeading, setFlatHeading] = useState(0);
 
-  // 2. ACTIVE TARGET IS NOW DYNAMIC STATE, NOT HARDCODED
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
+  const [autoRadarActive, setAutoRadarActive] = useState(true);
+
+  // FIX 1: NEW STATE TO TRACK IF SIGNAL IS CLOSE ENOUGH TO ACTIVATE
+  const [inRange, setInRange] = useState(false);
 
   const [distanceToTarget, setDistanceToTarget] = useState(0);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
@@ -73,7 +75,6 @@ export default function App() {
   const wayfinderSmoothRef = useRef(0);
   const ghostAnimation = useRef(new Animated.Value(0)).current;
 
-  // Optimized Madgwick Filter
   const madgwick = useRef(
     new AHRS({ sampleInterval: 33, algorithm: "Madgwick", beta: 0.04 }),
   ).current;
@@ -89,8 +90,9 @@ export default function App() {
     mz: 0,
   }).current;
 
-  // MASTER CALIBRATION (-15.0 pulls UI Left)
+  // MASTER SETTINGS
   const GLOBAL_YAW_OFFSET = -15.0;
+  const MAX_DETECTION_RADIUS = 150; // Meters (approx 500 feet) before the UI drops the lock
 
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
@@ -107,23 +109,22 @@ export default function App() {
     Magnetometer.setUpdateInterval(33);
 
     const accSub = Accelerometer.addListener((data) => {
-      sensors.ax = lowPass(data.x, sensors.ax);
-      sensors.ay = lowPass(data.y, sensors.ay);
-      sensors.az = lowPass(data.z, sensors.az);
+      sensors.ax = lowPass(-data.z, sensors.ax);
+      sensors.ay = lowPass(data.x, sensors.ay);
+      sensors.az = lowPass(-data.y, sensors.az);
     });
     const gyroSub = Gyroscope.addListener((data) => {
-      sensors.gx = lowPass(data.x, sensors.gx, 0.5);
-      sensors.gy = lowPass(data.y, sensors.gy, 0.5);
-      sensors.gz = lowPass(data.z, sensors.gz, 0.5);
+      sensors.gx = lowPass(-data.z, sensors.gx, 0.5);
+      sensors.gy = lowPass(data.x, sensors.gy, 0.5);
+      sensors.gz = lowPass(-data.y, sensors.gz, 0.5);
     });
     const magSub = Magnetometer.addListener((data) => {
-      sensors.mx = lowPass(data.x, sensors.mx, 0.1);
-      sensors.my = lowPass(data.y, sensors.my, 0.1);
-      sensors.mz = lowPass(data.z, sensors.mz, 0.1);
+      sensors.mx = lowPass(-data.z, sensors.mx, 0.1);
+      sensors.my = lowPass(data.x, sensors.my, 0.1);
+      sensors.mz = lowPass(-data.y, sensors.mz, 0.1);
 
-      let angle = Math.atan2(sensors.mz, -sensors.mx) * (180 / Math.PI);
+      let angle = Math.atan2(sensors.my, sensors.mx) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
-
       if (!isNaN(heading)) setFlatHeading(heading);
     });
 
@@ -142,11 +143,7 @@ export default function App() {
 
       const euler = madgwick.getEulerAngles();
       let fusedHeading =
-        (euler.heading * (180 / Math.PI) +
-          90 +
-          360 +
-          13.0 +
-          GLOBAL_YAW_OFFSET) %
+        (euler.heading * (180 / Math.PI) + 360 + 13.0 + GLOBAL_YAW_OFFSET) %
         360;
 
       if (!isNaN(fusedHeading)) {
@@ -170,10 +167,7 @@ export default function App() {
             distanceInterval: 0.1,
           },
           (loc) => {
-            if (loc?.coords) {
-              setUserLoc(loc.coords);
-              setVpsAccuracy(loc.coords.accuracy || 100);
-            }
+            if (loc?.coords) setUserLoc(loc.coords);
           },
         );
       }
@@ -198,8 +192,7 @@ export default function App() {
     };
   }, [permission]);
 
-  // 3. THE AUTO-TARGETING RADAR LOOP
-  // This constantly scans the array for the closest building to your current GPS point.
+  // AUTO-TARGETING & GEOFENCE LOGIC
   useEffect(() => {
     if (!userLoc) return;
 
@@ -220,13 +213,20 @@ export default function App() {
       }
     });
 
-    // Only switch targets if we found a new closest ghost
-    if (closestSite.id !== activeTarget.id) {
+    if (autoRadarActive && closestSite.id !== activeTarget.id) {
       setActiveTarget(closestSite);
     }
-  }, [userLoc]); // Runs every time your GPS location updates
 
-  // 4. WAYFINDER MATH (Now uses dynamic activeTarget)
+    // FIX 2: Evaluate Geofence
+    // Even if manual override is on, if the target is further than 150m, kill the lock.
+    if (shortestDistance <= MAX_DETECTION_RADIUS) {
+      setInRange(true);
+    } else {
+      setInRange(false);
+    }
+  }, [userLoc, autoRadarActive, activeTarget]);
+
+  // WAYFINDER MATH (Only fires instructions if in range)
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
@@ -243,16 +243,30 @@ export default function App() {
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
-    else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
-    else setTurnInstruction("TURN RIGHT ▶");
+    // FIX 3: Suppress turn instructions if the signal is lost
+    if (!inRange) {
+      setTurnInstruction("SIGNAL LOST // APPROACH TARGET");
+    } else {
+      if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
+      else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
+      else setTurnInstruction("TURN RIGHT ▶");
+    }
 
     const distY = dLat * 111320;
     const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
     const realDist = Math.sqrt(distX * distX + distY * distY);
 
     if (!isNaN(realDist)) setDistanceToTarget(realDist);
-  }, [userLoc, trueHeading, activeTarget]); // Updates immediately if activeTarget swaps
+  }, [userLoc, trueHeading, activeTarget, inRange]);
+
+  const cycleTarget = () => {
+    setAutoRadarActive(false);
+    const currentIndex = GHOST_SITES.findIndex(
+      (site) => site.id === activeTarget.id,
+    );
+    const nextIndex = (currentIndex + 1) % GHOST_SITES.length;
+    setActiveTarget(GHOST_SITES[nextIndex]);
+  };
 
   if (!permission?.granted) return <View style={styles.load} />;
 
@@ -283,32 +297,46 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      <Animated.View
-        style={[
-          styles.ghostContainer,
-          {
-            transform: [{ translateX: ghostX }, { translateY: ghostY }],
-            opacity: ghostOpacity,
-          },
-        ]}
-        pointerEvents="none"
-      >
-        <Text style={styles.ghostSymbol}>👤</Text>
-        <Text style={styles.ghostText}>// RESIDUAL SIGNAL...</Text>
-      </Animated.View>
+      {/* GHOST OVERLAY - Now only visible when signal is strong enough */}
+      {inRange && (
+        <Animated.View
+          style={[
+            styles.ghostContainer,
+            {
+              transform: [{ translateX: ghostX }, { translateY: ghostY }],
+              opacity: ghostOpacity,
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <Text style={styles.ghostSymbol}>👤</Text>
+        </Animated.View>
+      )}
 
-      <View style={styles.headerBar}>
-        <Text style={styles.headerLabel}>{activeTarget.heritage}</Text>
+      {/* HEADER BAR */}
+      <TouchableOpacity
+        style={[styles.headerBar, !inRange && styles.headerOut]}
+        activeOpacity={0.7}
+        onPress={cycleTarget}
+      >
+        <Text style={[styles.headerLabel, !inRange && styles.textOut]}>
+          {autoRadarActive ? "RADAR: AUTO" : "RADAR: MANUAL"}{" "}
+          {inRange ? "// LOCKED" : "// OUT OF RANGE"}
+        </Text>
         <View style={styles.signalContent}>
-          <Text style={styles.signalSub}>{activeTarget.year}</Text>
-          <Text style={styles.signalName}>{activeTarget.name}</Text>
-          <Text style={styles.signalDist}>
+          <Text style={[styles.signalSub, !inRange && styles.textOut]}>
+            {activeTarget.year}
+          </Text>
+          <Text style={[styles.signalName, !inRange && styles.textOut]}>
+            {activeTarget.name}
+          </Text>
+          <Text style={[styles.signalDist, !inRange && styles.textOut]}>
             {distFeet} FT // {distMeters} M
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
-      <View style={styles.compassPosition}>
+      <View style={styles.compassPosition} pointerEvents="none">
         <View
           style={[
             styles.ring,
@@ -322,36 +350,38 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      <View style={styles.wayfinderLayer} pointerEvents="none">
+      <View
+        style={[styles.wayfinderLayer, !inRange && styles.wayfinderDim]}
+        pointerEvents="none"
+      >
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
+          {/* Wayfinder disc goes flat/grey when out of range */}
           <View
             style={[
               styles.floatingDisc,
-              { transform: [{ rotate: `${safeWayfinderRot}deg` }] },
+              {
+                transform: [{ rotate: `${inRange ? safeWayfinderRot : 0}deg` }],
+              },
             ]}
           >
-            <Text style={styles.targetIcon}>✦</Text>
-            <Text style={styles.targetLabel}>FRONT DOOR</Text>
+            <Text style={[styles.targetIcon, !inRange && styles.iconOut]}>
+              ✦
+            </Text>
+            <Text style={[styles.targetLabel, !inRange && styles.textOut]}>
+              {inRange ? "FRONT DOOR" : "NO SIGNAL"}
+            </Text>
           </View>
         </View>
-        <View style={styles.instructionPill}>
-          <Text style={styles.instructionText}>{turnInstruction}</Text>
-          <Text style={styles.distanceText}>{distFeet} ft to entrance</Text>
+        <View style={[styles.instructionPill, !inRange && styles.pillOut]}>
+          <Text style={[styles.instructionText, !inRange && styles.textOut]}>
+            {turnInstruction}
+          </Text>
         </View>
       </View>
 
-      {safeDist < 25 && safeDist > 0 && (
-        <View style={styles.infoPanel} pointerEvents="none">
-          <Text style={styles.infoTitle}>{activeTarget.name}</Text>
-          <Text style={styles.infoMeta}>
-            {activeTarget.year} | {activeTarget.architect}
-          </Text>
-          <Text style={styles.infoFact}>{activeTarget.fact}</Text>
-        </View>
-      )}
-
-      {turnInstruction === "TARGET LOCKED" && (
+      {/* AR CANVAS - Strictly disabled if you are outside the 150m geofence */}
+      {inRange && turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
@@ -380,25 +410,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   ghostSymbol: { fontSize: 120, color: "rgba(0, 255, 255, 0.4)" },
-  ghostText: {
-    position: "absolute",
-    bottom: 30,
-    color: "rgba(0, 255, 255, 0.6)",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
+
   headerBar: {
     position: "absolute",
     top: 50,
     left: 20,
     width: "65%",
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.8)",
     padding: 15,
+    borderRadius: 4,
     borderLeftWidth: 4,
     borderLeftColor: "#00ffff",
     zIndex: 10,
   },
+  headerOut: {
+    borderLeftColor: "#ff3333",
+    backgroundColor: "rgba(50,0,0,0.8)",
+  }, // Red border when out of range
   headerLabel: {
     color: "#00ffff",
     fontSize: 8,
@@ -406,6 +434,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 5,
   },
+
   signalSub: {
     color: "rgba(255,255,255,0.7)",
     fontSize: 9,
@@ -419,6 +448,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     letterSpacing: 1,
   },
+
   compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   ring: {
     width: 60,
@@ -441,6 +471,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#ff3333",
     borderRadius: 2,
   },
+
   wayfinderLayer: {
     position: "absolute",
     bottom: 100,
@@ -448,6 +479,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 20,
   },
+  wayfinderDim: { opacity: 0.5 }, // Dims the entire compass when lost
   compassBase: {
     width: 120,
     height: 120,
@@ -474,8 +506,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   targetIcon: { color: "#00ffff", fontSize: 28 },
   targetLabel: { color: "#00ffff", fontSize: 7, fontWeight: "900" },
+  iconOut: { color: "#ff3333" },
+  textOut: { color: "#ffaaaa" }, // Faded red text when out of range
+
   instructionPill: {
     marginTop: 15,
     backgroundColor: "rgba(0,0,0,0.9)",
@@ -486,37 +522,11 @@ const styles = StyleSheet.create({
     borderColor: "#00ffff",
     alignItems: "center",
   },
+  pillOut: { borderColor: "#ff3333" },
   instructionText: {
     color: "#fff",
     fontSize: 13,
     fontWeight: "900",
     letterSpacing: 1,
   },
-  distanceText: { color: "rgba(255,255,255,0.6)", fontSize: 9, marginTop: 2 },
-  infoPanel: {
-    position: "absolute",
-    bottom: 300,
-    alignSelf: "center",
-    width: "85%",
-    backgroundColor: "rgba(0,0,0,0.95)",
-    padding: 20,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: "#00ffff",
-    zIndex: 30,
-  },
-  infoTitle: {
-    color: "#00ffff",
-    fontSize: 16,
-    fontWeight: "900",
-    marginBottom: 5,
-  },
-  infoMeta: {
-    color: "#fff",
-    fontSize: 10,
-    opacity: 0.6,
-    marginBottom: 10,
-    letterSpacing: 1,
-  },
-  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
 });
