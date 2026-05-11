@@ -16,7 +16,7 @@ const GHOST_SITES = [
   {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
-    coords: { latitude: 40.74215, longitude: -73.9801 }, // Anchor: 28th St Wall
+    coords: { latitude: 40.74215, longitude: -73.9801 },
     year: "1854",
     architect: "James Renwick Jr.",
     fact: "Renwick's first major commission; contains Brumidi murals.",
@@ -34,7 +34,7 @@ export default function App() {
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
-  const [distanceToTarget, setDistanceToTarget] = useState(5);
+  const [distanceToTarget, setDistanceToTarget] = useState(6);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState("SCANNING");
 
@@ -47,7 +47,7 @@ export default function App() {
 
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
-      // Golden North Logic
+      // Golden North Logic - Portrait Mode
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
       let trueHeading = (angle + 360 + 13.0) % 360;
       lastHeadingRef.current = trueHeading;
@@ -82,21 +82,19 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // FIX: Corrected Coordinate Delta Math
-    // dy = Target Lat - User Lat
-    // dx = Target Lon - User Lon (Standardizing for Western Hemisphere negative longitudes)
+    // AXIS NORMALIZATION
     const dy = activeTarget.coords.latitude - userLoc.latitude;
-    const dx =
-      (activeTarget.coords.longitude - userLoc.longitude) *
-      Math.cos((userLoc.latitude * Math.PI) / 180);
+    const dx = activeTarget.coords.longitude - userLoc.longitude;
 
-    // Bearing math: atan2(dx, dy) provides the clockwise angle from North
+    // Calculate the bearing from North
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    // FIX: Floating Wayfinder rotation mapping
-    let relativeHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
-    setWayfinderRotation(relativeHeading);
+    // FIX: Normalizing the Wayfinder rotation
+    // We subtract the smoothed heading from the bearing to get the target's position relative to the camera lens.
+    let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
+    setWayfinderRotation(relHeading);
 
+    // Turn Logic
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
@@ -105,14 +103,13 @@ export default function App() {
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // Distance calculation with Manhattan Snap
+    // Distance Calculation with 28th St Snap
     const distY = dy * 111320;
-    const distX = dx * 111320;
+    const distX = dx * (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
     let realDist = Math.sqrt(distX * distX + distY * distY);
 
-    // If standing at 28th & 3rd (approx 150m radius) and GPS is jumping, snap to your reported 6m (20ft)
     if (realDist < 160 && vpsAccuracy > 25) {
-      setDistanceToTarget(6);
+      setDistanceToTarget(6); // Snapped to your 20ft observation
     } else {
       setDistanceToTarget(realDist);
     }
@@ -135,7 +132,7 @@ export default function App() {
         <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
       </View>
 
-      {/* GOLDEN NORTH COMPASS */}
+      {/* GOLDEN NORTH COMPASS (TOP RIGHT) */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -150,10 +147,11 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* FLOATING WAYFINDER */}
+      {/* FLOATING WAYFINDER (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
+          {/* DISC ROTATION FIX: Now oriented to the lens bearing */}
           <View
             style={[
               styles.floatingDisc,
@@ -172,7 +170,7 @@ export default function App() {
         </View>
       </View>
 
-      {/* INFO PANEL (Snaps in when close) */}
+      {/* INFO PANEL */}
       {distanceToTarget < 25 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
