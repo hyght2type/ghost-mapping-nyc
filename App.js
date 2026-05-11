@@ -63,7 +63,6 @@ export default function App() {
   const [autoRadarActive, setAutoRadarActive] = useState(true);
   const [inRange, setInRange] = useState(false);
 
-  // NEW: State to track which buildings have been captured
   const [capturedGhosts, setCapturedGhosts] = useState([]);
 
   const [distanceToTarget, setDistanceToTarget] = useState(0);
@@ -92,11 +91,9 @@ export default function App() {
   }).current;
   const compassSensors = useRef({ x: 0, z: 0 }).current;
 
-  // MASTER SETTINGS (Untouched)
   const GLOBAL_YAW_OFFSET = -15.0;
   const MAX_DETECTION_RADIUS = 150;
-  // NEW: Capture Threshold
-  const CAPTURE_RADIUS = 15; // Meters (approx 50 feet)
+  const CAPTURE_RADIUS = 15;
 
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
@@ -153,12 +150,10 @@ export default function App() {
       );
 
       const euler = madgwick.getEulerAngles();
+
+      // FIX: Stripped the artificial + 180 degree error here. Math is now pure.
       let fusedHeading =
-        (euler.heading * (180 / Math.PI) +
-          180 +
-          360 +
-          13.0 +
-          GLOBAL_YAW_OFFSET) %
+        (euler.heading * (180 / Math.PI) + 360 + 13.0 + GLOBAL_YAW_OFFSET) %
         360;
 
       if (!isNaN(fusedHeading)) {
@@ -282,7 +277,6 @@ export default function App() {
     setActiveTarget(GHOST_SITES[nextIndex]);
   };
 
-  // NEW: Capture Execution Logic
   const handleCapture = () => {
     if (!capturedGhosts.includes(activeTarget.id)) {
       setCapturedGhosts([...capturedGhosts, activeTarget.id]);
@@ -429,7 +423,6 @@ export default function App() {
           </View>
         </View>
 
-        {/* THE CAPTURE BUTTON OVERRIDE */}
         {readyToCapture ? (
           <TouchableOpacity
             style={styles.captureButton}
@@ -463,7 +456,6 @@ export default function App() {
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
-            {/* NEW: Passing siteId and isCaptured to the 3D model */}
             <GhostBuilding
               distance={Math.max(6, safeDist)}
               siteId={activeTarget.id}
