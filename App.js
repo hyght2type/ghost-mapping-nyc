@@ -10,8 +10,9 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
-import { Magnetometer } from "expo-sensors";
+import { Magnetometer, Accelerometer, Gyroscope } from "expo-sensors";
 import * as Location from "expo-location";
+import AHRS from "ahrs"; // The Madgwick Engine
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
 
@@ -33,41 +34,106 @@ const GHOST_SITES = [
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [userLoc, setUserLoc] = useState(null);
-  const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
-  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
 
-  // Now tracks raw live distance without freezing
+  // STATE: Driven by the Madgwick Filter
+  const [trueHeading, setTrueHeading] = useState(0);
   const [distanceToTarget, setDistanceToTarget] = useState(0);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
-  const [turnInstruction, setTurnInstruction] = useState("SCANNING");
+  const [turnInstruction, setTurnInstruction] = useState(
+    "CALIBRATING SENSORS...",
+  );
 
+  // REFS FOR THE TRIAD ENGINE
+  const activeTarget = GHOST_SITES[0];
   const lastHeadingRef = useRef(0);
   const wayfinderSmoothRef = useRef(0);
   const ghostAnimation = useRef(new Animated.Value(0)).current;
+
+  // INITIALIZE MADGWICK FILTER
+  // Beta = 0.1: Low trust in magnetic data (to ignore building interference), high trust in gyro.
+  // SampleInterval = 20ms (50Hz) for smooth AR rendering.
+  const madgwick = useRef(
+    new AHRS({ sampleInterval: 20, algorithm: "Madgwick", beta: 0.1 }),
+  ).current;
+
+  // Sensor State Buffer
+  const sensors = useRef({
+    ax: 0,
+    ay: 0,
+    az: 1,
+    gx: 0,
+    gy: 0,
+    gz: 0,
+    mx: 0,
+    my: 0,
+    mz: 0,
+  }).current;
 
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
-    Magnetometer.setUpdateInterval(40);
-    const magSub = Magnetometer.addListener((data) => {
-      // THE GOLDEN COMPASS LOGIC (Preserved perfectly)
-      let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-      let trueHeading = (angle + 360 + 13.0) % 360;
-      lastHeadingRef.current = trueHeading;
-      setMagHeading(trueHeading);
+    // 1. SET HARDWARE POLLING TO 50Hz (20ms)
+    Accelerometer.setUpdateInterval(20);
+    Gyroscope.setUpdateInterval(20);
+    Magnetometer.setUpdateInterval(20);
 
-      const wayfinderDamping = 0.88;
-      wayfinderSmoothRef.current =
-        wayfinderSmoothRef.current * wayfinderDamping +
-        trueHeading * (1 - wayfinderDamping);
+    // 2. OPEN SENSOR STREAMS TO BUFFER
+    const accSub = Accelerometer.addListener((data) => {
+      sensors.ax = data.x;
+      sensors.ay = data.y;
+      sensors.az = data.z;
+    });
+    const gyroSub = Gyroscope.addListener((data) => {
+      sensors.gx = data.x;
+      sensors.gy = data.y;
+      sensors.gz = data.z;
+    });
+    const magSub = Magnetometer.addListener((data) => {
+      sensors.mx = data.x;
+      sensors.my = data.y;
+      sensors.mz = data.z;
     });
 
+    // 3. THE SENSOR FUSION LOOP
+    // We run the math strictly every 20ms to keep the quaternions stable.
+    const fusionLoop = setInterval(() => {
+      // Feed the triad into Madgwick (Gyro needs to be in rad/s, Expo does this natively)
+      madgwick.update(
+        sensors.gx,
+        sensors.gy,
+        sensors.gz,
+        sensors.ax,
+        sensors.ay,
+        sensors.az,
+        sensors.mx,
+        sensors.my,
+        sensors.mz,
+      );
+
+      // Extract the stabilized yaw (heading) from the quaternion
+      const euler = madgwick.getEulerAngles();
+
+      // Convert Radians to Degrees, adjust for Portrait orientation offset, and add NYC Declination (-13 deg)
+      let fusedHeading = (euler.heading * (180 / Math.PI) + 360 + 13.0) % 360;
+
+      lastHeadingRef.current = fusedHeading;
+      setTrueHeading(fusedHeading);
+
+      // Apply the viscous visual damping for the HUD disc
+      const wayfinderDamping = 0.85;
+      wayfinderSmoothRef.current =
+        wayfinderSmoothRef.current * wayfinderDamping +
+        fusedHeading * (1 - wayfinderDamping);
+    }, 20);
+
+    // 4. GPS TRACKING
+    let locSub;
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
-        Location.watchPositionAsync(
+        locSub = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.BestForNavigation,
             distanceInterval: 0.1,
@@ -80,6 +146,7 @@ export default function App() {
       }
     })();
 
+    // GHOST ANIMATION
     Animated.loop(
       Animated.timing(ghostAnimation, {
         toValue: 1,
@@ -90,7 +157,11 @@ export default function App() {
     ).start();
 
     return () => {
+      accSub.remove();
+      gyroSub.remove();
       magSub.remove();
+      clearInterval(fusionLoop);
+      if (locSub) locSub.remove();
       ghostAnimation.stopAnimation();
     };
   }, [permission]);
@@ -98,40 +169,36 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // 1. BEARING MATH (Fixed with strict latitude Cosine adjustment)
+    // BEARING MATH (Latitude Cosine Compensation)
     const dLat = activeTarget.coords.latitude - userLoc.latitude;
     const dLon = activeTarget.coords.longitude - userLoc.longitude;
-
     const dy = dLat;
     const dx = dLon * Math.cos(userLoc.latitude * (Math.PI / 180));
-
-    // Exact bearing to target
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    // Relative heading for the Wayfinder disc (Removed the 180 hack)
+    // WAYFINDER ROTATION (Lens-Relative, driven by Madgwick)
     let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relHeading);
 
-    // 2. TURN INSTRUCTIONS
+    // TURN INSTRUCTIONS
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    if (Math.abs(diff) < 35) setTurnInstruction("TARGET LOCKED");
+    // Tighter lock threshold because Madgwick is highly stable
+    if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // 3. LIVE DISTANCE TRACKING (Removed the 6m snap bug)
+    // LIVE DISTANCE
     const distY = dLat * 111320;
     const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
     const realDist = Math.sqrt(distX * distX + distY * distY);
-
     setDistanceToTarget(realDist);
-  }, [userLoc, magHeading, vpsAccuracy]);
+  }, [userLoc, trueHeading, vpsAccuracy]);
 
   if (!permission?.granted) return <View style={styles.load} />;
 
-  // Display calculations
   const distFeet = Math.round(distanceToTarget * 3.28084);
   const distMeters = Math.round(distanceToTarget);
 
@@ -155,7 +222,7 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* FUN: THE GHOST OVERLAY */}
+      {/* THE FUN GHOST OVERLAY */}
       <Animated.View
         style={[
           styles.ghostContainer,
@@ -170,7 +237,7 @@ export default function App() {
         <Text style={styles.ghostText}>// RESIDUAL SIGNAL...</Text>
       </Animated.View>
 
-      {/* HEADER BAR WITH LIVE FEET/METERS */}
+      {/* HEADER BAR (LIVE FEET/METERS) */}
       <View style={styles.headerBar}>
         <Text style={styles.headerLabel}>{activeTarget.heritage}</Text>
         <View style={styles.signalContent}>
@@ -182,12 +249,12 @@ export default function App() {
         </View>
       </View>
 
-      {/* GOLDEN COMPASS (TOP RIGHT) */}
+      {/* GOLDEN COMPASS (TOP RIGHT) - Driven strictly by the Fused Quaternion */}
       <View style={styles.compassPosition}>
         <View
           style={[
             styles.ring,
-            { transform: [{ rotate: `${(360 - magHeading) % 360}deg` }] },
+            { transform: [{ rotate: `${(360 - trueHeading) % 360}deg` }] },
           ]}
         >
           <View style={styles.northMarker}>
@@ -197,7 +264,7 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* WAYFINDER WITH LIVE FEET */}
+      {/* WAYFINDER (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
