@@ -36,7 +36,9 @@ export default function App() {
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
-  const [distanceToTarget, setDistanceToTarget] = useState(6);
+
+  // Now tracks raw live distance without freezing
+  const [distanceToTarget, setDistanceToTarget] = useState(0);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState("SCANNING");
 
@@ -50,6 +52,7 @@ export default function App() {
 
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
+      // THE GOLDEN COMPASS LOGIC (Preserved perfectly)
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
       let trueHeading = (angle + 360 + 13.0) % 360;
       lastHeadingRef.current = trueHeading;
@@ -95,12 +98,21 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    const dy = activeTarget.coords.latitude - userLoc.latitude;
-    const dx = activeTarget.coords.longitude - userLoc.longitude;
+    // 1. BEARING MATH (Fixed with strict latitude Cosine adjustment)
+    const dLat = activeTarget.coords.latitude - userLoc.latitude;
+    const dLon = activeTarget.coords.longitude - userLoc.longitude;
+
+    const dy = dLat;
+    const dx = dLon * Math.cos(userLoc.latitude * (Math.PI / 180));
+
+    // Exact bearing to target
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
-    let relHeading = (bearing - wayfinderSmoothRef.current + 180 + 360) % 360;
+
+    // Relative heading for the Wayfinder disc (Removed the 180 hack)
+    let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relHeading);
 
+    // 2. TURN INSTRUCTIONS
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
@@ -109,17 +121,19 @@ export default function App() {
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    const distY = dy * 111320;
-    const distX = dx * (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
-    let realDist = Math.sqrt(distX * distX + distY * distY);
-    if (realDist < 160 && vpsAccuracy > 25) {
-      setDistanceToTarget(6);
-    } else {
-      setDistanceToTarget(realDist);
-    }
+    // 3. LIVE DISTANCE TRACKING (Removed the 6m snap bug)
+    const distY = dLat * 111320;
+    const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
+    const realDist = Math.sqrt(distX * distX + distY * distY);
+
+    setDistanceToTarget(realDist);
   }, [userLoc, magHeading, vpsAccuracy]);
 
   if (!permission?.granted) return <View style={styles.load} />;
+
+  // Display calculations
+  const distFeet = Math.round(distanceToTarget * 3.28084);
+  const distMeters = Math.round(distanceToTarget);
 
   const ghostX = ghostAnimation.interpolate({
     inputRange: [0, 1],
@@ -141,6 +155,7 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
+      {/* FUN: THE GHOST OVERLAY */}
       <Animated.View
         style={[
           styles.ghostContainer,
@@ -155,16 +170,19 @@ export default function App() {
         <Text style={styles.ghostText}>// RESIDUAL SIGNAL...</Text>
       </Animated.View>
 
-      {/* REPLACED: VPS LABEL REMOVED FOR HISTORICAL CONTEXT */}
+      {/* HEADER BAR WITH LIVE FEET/METERS */}
       <View style={styles.headerBar}>
         <Text style={styles.headerLabel}>{activeTarget.heritage}</Text>
         <View style={styles.signalContent}>
           <Text style={styles.signalSub}>{activeTarget.year}</Text>
           <Text style={styles.signalName}>{activeTarget.name}</Text>
-          <Text style={styles.signalDist}>{activeTarget.architect}</Text>
+          <Text style={styles.signalDist}>
+            {distFeet} FT // {distMeters} M
+          </Text>
         </View>
       </View>
 
+      {/* GOLDEN COMPASS (TOP RIGHT) */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -179,6 +197,7 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
+      {/* WAYFINDER WITH LIVE FEET */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -194,12 +213,11 @@ export default function App() {
         </View>
         <View style={styles.instructionPill}>
           <Text style={styles.instructionText}>{turnInstruction}</Text>
-          <Text style={styles.distanceText}>
-            {Math.round(distanceToTarget)}m to entrance
-          </Text>
+          <Text style={styles.distanceText}>{distFeet} ft to entrance</Text>
         </View>
       </View>
 
+      {/* INFO PANEL */}
       {distanceToTarget < 25 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
@@ -210,6 +228,7 @@ export default function App() {
         </View>
       )}
 
+      {/* 3D AR CANVAS */}
       {turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -273,7 +292,7 @@ const styles = StyleSheet.create({
   signalName: { color: "#fff", fontSize: 13, fontWeight: "900" },
   signalDist: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 20,
     fontWeight: "300",
     marginTop: 2,
     letterSpacing: 1,
