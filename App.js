@@ -61,8 +61,6 @@ export default function App() {
 
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
   const [autoRadarActive, setAutoRadarActive] = useState(true);
-
-  // FIX 1: NEW STATE TO TRACK IF SIGNAL IS CLOSE ENOUGH TO ACTIVATE
   const [inRange, setInRange] = useState(false);
 
   const [distanceToTarget, setDistanceToTarget] = useState(0);
@@ -90,9 +88,12 @@ export default function App() {
     mz: 0,
   }).current;
 
+  // Dedicated state buffer to strictly isolate the 2D compass math from the 3D Wayfinder math
+  const compassSensors = useRef({ x: 0, z: 0 }).current;
+
   // MASTER SETTINGS
   const GLOBAL_YAW_OFFSET = -15.0;
-  const MAX_DETECTION_RADIUS = 150; // Meters (approx 500 feet) before the UI drops the lock
+  const MAX_DETECTION_RADIUS = 150;
 
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
@@ -113,18 +114,27 @@ export default function App() {
       sensors.ay = lowPass(data.x, sensors.ay);
       sensors.az = lowPass(-data.y, sensors.az);
     });
+
     const gyroSub = Gyroscope.addListener((data) => {
       sensors.gx = lowPass(-data.z, sensors.gx, 0.5);
       sensors.gy = lowPass(data.x, sensors.gy, 0.5);
       sensors.gz = lowPass(-data.y, sensors.gz, 0.5);
     });
+
     const magSub = Magnetometer.addListener((data) => {
+      // 1. Wayfinder Stream (Transformed Aeronautical Axes)
       sensors.mx = lowPass(-data.z, sensors.mx, 0.1);
       sensors.my = lowPass(data.x, sensors.my, 0.1);
       sensors.mz = lowPass(-data.y, sensors.mz, 0.1);
 
-      let angle = Math.atan2(sensors.my, sensors.mx) * (180 / Math.PI);
+      // 2. Golden Compass Stream (Restored, Pure Portrait Axes)
+      compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
+      compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
+
+      let angle =
+        Math.atan2(compassSensors.z, -compassSensors.x) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
+
       if (!isNaN(heading)) setFlatHeading(heading);
     });
 
@@ -217,8 +227,6 @@ export default function App() {
       setActiveTarget(closestSite);
     }
 
-    // FIX 2: Evaluate Geofence
-    // Even if manual override is on, if the target is further than 150m, kill the lock.
     if (shortestDistance <= MAX_DETECTION_RADIUS) {
       setInRange(true);
     } else {
@@ -226,7 +234,7 @@ export default function App() {
     }
   }, [userLoc, autoRadarActive, activeTarget]);
 
-  // WAYFINDER MATH (Only fires instructions if in range)
+  // WAYFINDER MATH
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
@@ -243,7 +251,6 @@ export default function App() {
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    // FIX 3: Suppress turn instructions if the signal is lost
     if (!inRange) {
       setTurnInstruction("SIGNAL LOST // APPROACH TARGET");
     } else {
@@ -297,7 +304,6 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* GHOST OVERLAY - Now only visible when signal is strong enough */}
       {inRange && (
         <Animated.View
           style={[
@@ -313,7 +319,6 @@ export default function App() {
         </Animated.View>
       )}
 
-      {/* HEADER BAR */}
       <TouchableOpacity
         style={[styles.headerBar, !inRange && styles.headerOut]}
         activeOpacity={0.7}
@@ -356,7 +361,6 @@ export default function App() {
       >
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
-          {/* Wayfinder disc goes flat/grey when out of range */}
           <View
             style={[
               styles.floatingDisc,
@@ -380,7 +384,6 @@ export default function App() {
         </View>
       </View>
 
-      {/* AR CANVAS - Strictly disabled if you are outside the 150m geofence */}
       {inRange && turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -426,7 +429,7 @@ const styles = StyleSheet.create({
   headerOut: {
     borderLeftColor: "#ff3333",
     backgroundColor: "rgba(50,0,0,0.8)",
-  }, // Red border when out of range
+  },
   headerLabel: {
     color: "#00ffff",
     fontSize: 8,
@@ -479,7 +482,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 20,
   },
-  wayfinderDim: { opacity: 0.5 }, // Dims the entire compass when lost
+  wayfinderDim: { opacity: 0.5 },
   compassBase: {
     width: 120,
     height: 120,
@@ -510,7 +513,7 @@ const styles = StyleSheet.create({
   targetIcon: { color: "#00ffff", fontSize: 28 },
   targetLabel: { color: "#00ffff", fontSize: 7, fontWeight: "900" },
   iconOut: { color: "#ff3333" },
-  textOut: { color: "#ffaaaa" }, // Faded red text when out of range
+  textOut: { color: "#ffaaaa" },
 
   instructionPill: {
     marginTop: 15,
@@ -529,4 +532,31 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1,
   },
+
+  infoPanel: {
+    position: "absolute",
+    bottom: 300,
+    alignSelf: "center",
+    width: "85%",
+    backgroundColor: "rgba(0,0,0,0.95)",
+    padding: 20,
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: "#00ffff",
+    zIndex: 30,
+  },
+  infoTitle: {
+    color: "#00ffff",
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 5,
+  },
+  infoMeta: {
+    color: "#fff",
+    fontSize: 10,
+    opacity: 0.6,
+    marginBottom: 10,
+    letterSpacing: 1,
+  },
+  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
 });
