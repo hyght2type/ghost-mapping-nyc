@@ -36,9 +36,8 @@ export default function App() {
   const [userLoc, setUserLoc] = useState(null);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
 
-  // STATE: Driven by the Madgwick Filter (3D Wayfinder)
+  // STATE: Headings
   const [trueHeading, setTrueHeading] = useState(0);
-  // STATE: Driven by raw Magnetometer (2D Top-Right Compass)
   const [flatHeading, setFlatHeading] = useState(0);
 
   const [distanceToTarget, setDistanceToTarget] = useState(0);
@@ -52,7 +51,6 @@ export default function App() {
   const wayfinderSmoothRef = useRef(0);
   const ghostAnimation = useRef(new Animated.Value(0)).current;
 
-  // Initialize Madgwick Filter
   const madgwick = useRef(
     new AHRS({ sampleInterval: 20, algorithm: "Madgwick", beta: 0.1 }),
   ).current;
@@ -68,16 +66,20 @@ export default function App() {
     mz: 0,
   }).current;
 
+  // ==========================================
+  // MASTER CALIBRATION: Change this number to tweak alignment
+  // Negative (-) pulls UI Left. Positive (+) pulls UI Right.
+  const GLOBAL_YAW_OFFSET = -15.0;
+  // ==========================================
+
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
-    // 1. Set sensor polling to 50Hz
     Accelerometer.setUpdateInterval(20);
     Gyroscope.setUpdateInterval(20);
     Magnetometer.setUpdateInterval(20);
 
-    // 2. Open sensor streams
     const accSub = Accelerometer.addListener((data) => {
       sensors.ax = data.x;
       sensors.ay = data.y;
@@ -94,14 +96,12 @@ export default function App() {
       sensors.my = data.y;
       sensors.mz = data.z;
 
-      // GOLDEN COMPASS: Raw 2D Portrait Math
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-      // FIX: Flipped manual offset to + 15.0
-      let heading = (angle + 360 + 13.0 + 15.0) % 360;
+      // Applied Global Yaw Offset
+      let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
       setFlatHeading(heading);
     });
 
-    // 3. Madgwick Fusion Loop
     const fusionLoop = setInterval(() => {
       madgwick.update(
         sensors.gx,
@@ -117,21 +117,24 @@ export default function App() {
 
       const euler = madgwick.getEulerAngles();
 
-      // FIX: Flipped manual offset to + 15.0
+      // Applied Global Yaw Offset
       let fusedHeading =
-        (euler.heading * (180 / Math.PI) + 90 + 360 + 13.0 + 15.0) % 360;
+        (euler.heading * (180 / Math.PI) +
+          90 +
+          360 +
+          13.0 +
+          GLOBAL_YAW_OFFSET) %
+        360;
 
       lastHeadingRef.current = fusedHeading;
       setTrueHeading(fusedHeading);
 
-      // Viscous damping for the UI
       const wayfinderDamping = 0.85;
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
         fusedHeading * (1 - wayfinderDamping);
     }, 20);
 
-    // 4. GPS Tracking
     let locSub;
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -149,7 +152,6 @@ export default function App() {
       }
     })();
 
-    // Ghost Animation Loop
     Animated.loop(
       Animated.timing(ghostAnimation, {
         toValue: 1,
@@ -172,18 +174,15 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // TARGET BEARING MATH
     const dLat = activeTarget.coords.latitude - userLoc.latitude;
     const dLon = activeTarget.coords.longitude - userLoc.longitude;
     const dy = dLat;
     const dx = dLon * Math.cos(userLoc.latitude * (Math.PI / 180));
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    // WAYFINDER ROTATION (Driven by fused trueHeading)
     let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relHeading);
 
-    // TURN INSTRUCTIONS
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
@@ -192,7 +191,6 @@ export default function App() {
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // LIVE DISTANCE TRACKING
     const distY = dLat * 111320;
     const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
     const realDist = Math.sqrt(distX * distX + distY * distY);
@@ -201,11 +199,9 @@ export default function App() {
 
   if (!permission?.granted) return <View style={styles.load} />;
 
-  // Distance formatting
   const distFeet = Math.round(distanceToTarget * 3.28084);
   const distMeters = Math.round(distanceToTarget);
 
-  // Ghost interpolation
   const ghostX = ghostAnimation.interpolate({
     inputRange: [0, 1],
     outputRange: [-200, width + 200],
@@ -226,7 +222,6 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* TEMP GHOST OVERLAY */}
       <Animated.View
         style={[
           styles.ghostContainer,
@@ -241,7 +236,6 @@ export default function App() {
         <Text style={styles.ghostText}>// RESIDUAL SIGNAL...</Text>
       </Animated.View>
 
-      {/* HEADER BAR */}
       <View style={styles.headerBar}>
         <Text style={styles.headerLabel}>{activeTarget.heritage}</Text>
         <View style={styles.signalContent}>
@@ -253,7 +247,6 @@ export default function App() {
         </View>
       </View>
 
-      {/* GOLDEN COMPASS (TOP RIGHT) - Driven by flatHeading */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -268,7 +261,6 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* WAYFINDER (BOTTOM) - Driven by wayfinderRotation (Madgwick) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -288,7 +280,6 @@ export default function App() {
         </View>
       </View>
 
-      {/* INFO PANEL */}
       {distanceToTarget < 25 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
@@ -299,7 +290,6 @@ export default function App() {
         </View>
       )}
 
-      {/* 3D AR CANVAS */}
       {turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
