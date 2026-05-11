@@ -96,7 +96,8 @@ export default function App() {
 
       // GOLDEN COMPASS: Raw 2D Portrait Math
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-      let heading = (angle + 360 + 13.0) % 360;
+      // FIX: +13 (Declination) - 15 (Manual Left Offset)
+      let heading = (angle + 360 + 13.0 - 15.0) % 360;
       setFlatHeading(heading);
     });
 
@@ -116,9 +117,9 @@ export default function App() {
 
       const euler = madgwick.getEulerAngles();
 
-      // FIX: +90 degrees added to correct the Portrait vs Flat axis misalignment
+      // FIX: +90 (Portrait Fix) + 13 (Declination) - 15 (Manual Left Offset)
       let fusedHeading =
-        (euler.heading * (180 / Math.PI) + 90 + 360 + 13.0) % 360;
+        (euler.heading * (180 / Math.PI) + 90 + 360 + 13.0 - 15.0) % 360;
 
       lastHeadingRef.current = fusedHeading;
       setTrueHeading(fusedHeading);
