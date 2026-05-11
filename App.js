@@ -45,16 +45,18 @@ export default function App() {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
+    /** * SENSOR ENGINE: Using the verified Golden Approach
+     */
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
-      // Golden North Logic - Portrait Mode
+      // 1. TOP RIGHT NORTH COMPASS LOGIC (LEAVE ALONE)
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-      let trueHeading = (angle + 360 + 13.0) % 360;
+      let trueHeading = (angle + 360 + 13.0) % 360; // 13.0 deg for NYC Declination
       lastHeadingRef.current = trueHeading;
       setMagHeading(trueHeading);
 
-      // Wayfinder viscous damping
-      const wayfinderDamping = 0.85;
+      // 2. WAYFINDER LOGIC: Using the same Z, -X logic for the damping pool
+      const wayfinderDamping = 0.88; // Floating water feel
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
         trueHeading * (1 - wayfinderDamping);
@@ -82,34 +84,35 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // AXIS NORMALIZATION
+    // TARGET BEARING MATH
     const dy = activeTarget.coords.latitude - userLoc.latitude;
     const dx = activeTarget.coords.longitude - userLoc.longitude;
 
-    // Calculate the bearing from North
+    // Bearing is the absolute world-angle to the building from North
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    // FIX: Normalizing the Wayfinder rotation
-    // We subtract the smoothed heading from the bearing to get the target's position relative to the camera lens.
+    // WAYFINDER ROTATION (LENS-RELATIVE)
+    // We apply the Target Bearing to the current Smoothed Sensor Heading
+    // This tells the '✦' icon where to move on the disc relative to your phone's lens.
     let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relHeading);
 
-    // Turn Logic
+    // TURN INSTRUCTIONS
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    if (Math.abs(diff) < 35) setTurnInstruction("TARGET LOCKED");
+    if (Math.abs(diff) < 30) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // Distance Calculation with 28th St Snap
+    // DISTANCE & SNAP LOGIC
     const distY = dy * 111320;
     const distX = dx * (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
     let realDist = Math.sqrt(distX * distX + distY * distY);
 
-    if (realDist < 160 && vpsAccuracy > 25) {
-      setDistanceToTarget(6); // Snapped to your 20ft observation
+    if (realDist < 150 && vpsAccuracy > 25) {
+      setDistanceToTarget(6); // Snapped to 20ft observation
     } else {
       setDistanceToTarget(realDist);
     }
@@ -124,7 +127,7 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* HEADER BAR */}
+      {/* 1. NEAREST SIGNAL BAR */}
       <View style={styles.headerBar}>
         <Text style={styles.headerLabel}>GHOST MAPPING // NYC</Text>
         <Text style={styles.signalSub}>NEAREST SIGNAL:</Text>
@@ -132,7 +135,7 @@ export default function App() {
         <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
       </View>
 
-      {/* GOLDEN NORTH COMPASS (TOP RIGHT) */}
+      {/* 2. GOLDEN NORTH COMPASS (EXACT LOGIC REPLICATED IN HUD) */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -147,11 +150,11 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* FLOATING WAYFINDER (BOTTOM) */}
+      {/* 3. FLOATING WAYFINDER (TARGET HUD) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
-          {/* DISC ROTATION FIX: Now oriented to the lens bearing */}
+          {/* Wayfinder Disc follows the same rotation logic as the main compass, but target-aware */}
           <View
             style={[
               styles.floatingDisc,
@@ -170,7 +173,7 @@ export default function App() {
         </View>
       </View>
 
-      {/* INFO PANEL */}
+      {/* 4. INFO PANEL */}
       {distanceToTarget < 25 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
