@@ -50,6 +50,16 @@ const GHOST_SITES = [
     heritage: "BEAUX-ARTS // CELESTIAL MURAL",
     fact: "The famous celestial ceiling mural over the main concourse is actually painted backwards.",
   },
+  {
+    id: "jefferson-market",
+    name: "JEFFERSON MARKET LIBRARY",
+    address: "425 Avenue of the Americas",
+    coords: { latitude: 40.7345, longitude: -73.9986 },
+    year: "EST. 1877",
+    architect: "FREDERICK CLARKE WITHERS",
+    heritage: "VICTORIAN GOTHIC // OLD COURTHOUSE",
+    fact: "Originally a courthouse and prison, its iconic clock tower once served as a firewatcher's lookout before it was saved from demolition to become a library.",
+  },
 ];
 
 export default function App() {
@@ -109,9 +119,6 @@ export default function App() {
     Gyroscope.setUpdateInterval(33);
     Magnetometer.setUpdateInterval(33);
 
-    // FIX: The Virtual Flat Desk Transformation.
-    // We map the upright portrait sensors to mimic a phone lying flat.
-    // This perfectly aligns gravity to the Z-axis (+1G), stopping the upside-down inversion.
     const accSub = Accelerometer.addListener((data) => {
       sensors.ax = lowPass(data.x, sensors.ax);
       sensors.ay = lowPass(-data.z, sensors.ay);
@@ -125,12 +132,10 @@ export default function App() {
     });
 
     const magSub = Magnetometer.addListener((data) => {
-      // Wayfinder (Virtual Flat Stream)
       sensors.mx = lowPass(data.x, sensors.mx, 0.1);
       sensors.my = lowPass(-data.z, sensors.my, 0.1);
       sensors.mz = lowPass(data.y, sensors.mz, 0.1);
 
-      // Golden Compass (Untouched Pure Portrait Stream)
       compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
       compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
 
@@ -156,8 +161,6 @@ export default function App() {
 
       const euler = madgwick.getEulerAngles();
 
-      // Since we are now using a Virtual Flat frame, we extract the pure yaw.
-      // The negative sign ensures the Madgwick math turns the correct clockwise direction.
       let fusedHeading =
         (-euler.heading * (180 / Math.PI) + 360 + 13.0 + GLOBAL_YAW_OFFSET) %
         360;

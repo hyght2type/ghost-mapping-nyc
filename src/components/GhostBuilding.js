@@ -62,6 +62,34 @@ export function GhostBuilding({ distance, siteId, isCaptured }) {
             />
           </mesh>
         );
+      case "jefferson-market":
+        // Victorian Gothic Clocktower (Tower with a pointed roof)
+        return (
+          <group>
+            <mesh position={[0, 2, 0]}>
+              <boxGeometry args={[3, 8, 3]} />
+              <meshStandardMaterial
+                color={glowColor}
+                wireframe={true}
+                transparent={true}
+                opacity={0.6}
+                emissive={glowColor}
+                emissiveIntensity={0.8}
+              />
+            </mesh>
+            <mesh position={[0, 7.5, 0]}>
+              <coneGeometry args={[2.5, 3, 4]} />
+              <meshStandardMaterial
+                color={glowColor}
+                wireframe={true}
+                transparent={true}
+                opacity={0.6}
+                emissive={glowColor}
+                emissiveIntensity={0.8}
+              />
+            </mesh>
+          </group>
+        );
       case "st-stephens":
       default:
         // Romanesque Revival (Blocky, sturdy)
