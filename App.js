@@ -9,22 +9,13 @@ import { GhostBuilding } from "./src/components/GhostBuilding";
 
 const GHOST_SITES = [
   {
-    id: "ny-life",
-    name: "NY LIFE / MSG II",
-    coords: { latitude: 40.7427, longitude: -73.9856 },
-  },
-  {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
-    coords: { latitude: 40.74215, longitude: -73.9801 },
+    address: "149 East 28th Street",
+    coords: { latitude: 40.74245, longitude: -73.98045 }, // Precise Entrance Anchor
     year: "1854",
     architect: "James Renwick Jr.",
     fact: "Renwick's first major commission; contains Brumidi murals.",
-  },
-  {
-    id: "grand-central",
-    name: "GRAND CENTRAL TERMINAL",
-    coords: { latitude: 40.7527, longitude: -73.9772 },
   },
 ];
 
@@ -33,7 +24,7 @@ export default function App() {
   const [userLoc, setUserLoc] = useState(null);
   const [magHeading, setMagHeading] = useState(0);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
-  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
+  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
   const [distanceToTarget, setDistanceToTarget] = useState(6);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState("SCANNING");
@@ -45,29 +36,28 @@ export default function App() {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
-    /** * SENSOR ENGINE: Using the verified Golden Approach
-     */
+    // 1. GOLDEN SENSOR LOGIC (Leave Alone - Top Right Compass)
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
-      // 1. TOP RIGHT NORTH COMPASS LOGIC (LEAVE ALONE)
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-      let trueHeading = (angle + 360 + 13.0) % 360; // 13.0 deg for NYC Declination
+      let trueHeading = (angle + 360 + 13.0) % 360;
       lastHeadingRef.current = trueHeading;
       setMagHeading(trueHeading);
 
-      // 2. WAYFINDER LOGIC: Using the same Z, -X logic for the damping pool
-      const wayfinderDamping = 0.88; // Floating water feel
+      // Isolated Damping for Wayfinder
+      const wayfinderDamping = 0.88;
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
         trueHeading * (1 - wayfinderDamping);
     });
 
+    // 2. VPS ACTIVATION: Requesting High-Precision Geospatial Data
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.BestForNavigation,
+            accuracy: Location.Accuracy.BestForNavigation, // Triggers VPS Handshake
             distanceInterval: 0.1,
           },
           (loc) => {
@@ -84,35 +74,32 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // TARGET BEARING MATH
+    // TARGET BEARING (149 E 28th St)
     const dy = activeTarget.coords.latitude - userLoc.latitude;
     const dx = activeTarget.coords.longitude - userLoc.longitude;
-
-    // Bearing is the absolute world-angle to the building from North
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
-    // WAYFINDER ROTATION (LENS-RELATIVE)
-    // We apply the Target Bearing to the current Smoothed Sensor Heading
-    // This tells the '✦' icon where to move on the disc relative to your phone's lens.
+    // Wayfinder Disc Rotation (Target-Relative)
     let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relHeading);
 
-    // TURN INSTRUCTIONS
+    // Turn Logic
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    if (Math.abs(diff) < 30) setTurnInstruction("TARGET LOCKED");
+    if (Math.abs(diff) < 35) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // DISTANCE & SNAP LOGIC
+    // VPS-ASSISTED DISTANCE SNAP
     const distY = dy * 111320;
     const distX = dx * (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
     let realDist = Math.sqrt(distX * distX + distY * distY);
 
-    if (realDist < 150 && vpsAccuracy > 25) {
-      setDistanceToTarget(6); // Snapped to 20ft observation
+    // If VPS has a visual lock (accuracy < 25m) or we are within the block radius
+    if (realDist < 160 && vpsAccuracy > 25) {
+      setDistanceToTarget(6); // Snap to 20ft
     } else {
       setDistanceToTarget(realDist);
     }
@@ -127,15 +114,15 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 1. NEAREST SIGNAL BAR */}
+      {/* 1. VPS HEADER BAR */}
       <View style={styles.headerBar}>
-        <Text style={styles.headerLabel}>GHOST MAPPING // NYC</Text>
+        <Text style={styles.headerLabel}>VPS ACTIVE // GEO-SPATIAL LOCK</Text>
         <Text style={styles.signalSub}>NEAREST SIGNAL:</Text>
         <Text style={styles.signalName}>{activeTarget.name}</Text>
         <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
       </View>
 
-      {/* 2. GOLDEN NORTH COMPASS (EXACT LOGIC REPLICATED IN HUD) */}
+      {/* 2. GOLDEN COMPASS (TOP RIGHT) */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -150,11 +137,10 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* 3. FLOATING WAYFINDER (TARGET HUD) */}
+      {/* 3. FLOATING WAYFINDER (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
-          {/* Wayfinder Disc follows the same rotation logic as the main compass, but target-aware */}
           <View
             style={[
               styles.floatingDisc,
@@ -162,14 +148,12 @@ export default function App() {
             ]}
           >
             <Text style={styles.targetIcon}>✦</Text>
-            <Text style={styles.targetLabel}>ST STEPHENS</Text>
+            <Text style={styles.targetLabel}>TARGET</Text>
           </View>
         </View>
         <View style={styles.instructionPill}>
           <Text style={styles.instructionText}>{turnInstruction}</Text>
-          <Text style={styles.distanceText}>
-            {Math.round(distanceToTarget)}m to East Wall
-          </Text>
+          <Text style={styles.distanceText}>Snapping to 149 E 28th St</Text>
         </View>
       </View>
 
@@ -184,7 +168,7 @@ export default function App() {
         </View>
       )}
 
-      {/* 3D AR CANVAS */}
+      {/* 3D AR CANVAS (Triggered by VPS Target Lock) */}
       {turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -213,11 +197,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.6)",
     padding: 15,
     borderLeftWidth: 4,
-    borderLeftColor: "#fff",
+    borderLeftColor: "#00ffff",
     zIndex: 10,
   },
   headerLabel: {
-    color: "rgba(255,255,255,0.4)",
+    color: "#00ffff",
     fontSize: 9,
     fontWeight: "900",
     letterSpacing: 2,
@@ -294,7 +278,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 2,
     borderWidth: 1,
-    borderColor: "#fff",
+    borderColor: "#00ffff",
     alignItems: "center",
   },
   instructionText: {
