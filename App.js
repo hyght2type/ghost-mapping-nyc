@@ -18,7 +18,18 @@ import { GhostBuilding } from "./src/components/GhostBuilding";
 
 const { width, height } = Dimensions.get("window");
 
+// 1. RESTORED THE FULL GHOST DATABASE
 const GHOST_SITES = [
+  {
+    id: "ny-life",
+    name: "NY LIFE / MSG II",
+    address: "26 Madison Ave",
+    coords: { latitude: 40.7427, longitude: -73.9856 },
+    year: "EST. 1890",
+    architect: "STANFORD WHITE",
+    heritage: "BEAUX-ARTS // LOST ARENA",
+    fact: "Former site of the second Madison Square Garden, where architect Stanford White was famously murdered on the rooftop.",
+  },
   {
     id: "st-stephens",
     name: "ST. STEPHEN THE FIRST MARTYR",
@@ -28,6 +39,16 @@ const GHOST_SITES = [
     architect: "JAMES RENWICK JR.",
     heritage: "ROMANESQUE REVIVAL // BRUMIDI MURALS",
     fact: "Commissioned by Dr. Jeremiah Cummings; the interior houses the largest collection of Brumidi's religious works in America.",
+  },
+  {
+    id: "grand-central",
+    name: "GRAND CENTRAL TERMINAL",
+    address: "89 E 42nd Street",
+    coords: { latitude: 40.7527, longitude: -73.9772 },
+    year: "EST. 1913",
+    architect: "REED AND STEM",
+    heritage: "BEAUX-ARTS // CELESTIAL MURAL",
+    fact: "The famous celestial ceiling mural over the main concourse is actually painted backwards.",
   },
 ];
 
@@ -39,13 +60,15 @@ export default function App() {
   const [trueHeading, setTrueHeading] = useState(0);
   const [flatHeading, setFlatHeading] = useState(0);
 
+  // 2. ACTIVE TARGET IS NOW DYNAMIC STATE, NOT HARDCODED
+  const [activeTarget, setActiveTarget] = useState(GHOST_SITES[0]);
+
   const [distanceToTarget, setDistanceToTarget] = useState(0);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState(
     "CALIBRATING SENSORS...",
   );
 
-  const activeTarget = GHOST_SITES[0];
   const lastHeadingRef = useRef(0);
   const wayfinderSmoothRef = useRef(0);
   const ghostAnimation = useRef(new Animated.Value(0)).current;
@@ -66,12 +89,9 @@ export default function App() {
     mz: 0,
   }).current;
 
-  // ==========================================
   // MASTER CALIBRATION (-15.0 pulls UI Left)
   const GLOBAL_YAW_OFFSET = -15.0;
-  // ==========================================
 
-  // CRASH FIX: Bulletproofed Low-Pass filter that rejects undefined/NaN hardware glitches
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
       return previous;
@@ -104,7 +124,6 @@ export default function App() {
       let angle = Math.atan2(sensors.mz, -sensors.mx) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
 
-      // CRASH FIX: Prevent NaN heading state
       if (!isNaN(heading)) setFlatHeading(heading);
     });
 
@@ -179,6 +198,35 @@ export default function App() {
     };
   }, [permission]);
 
+  // 3. THE AUTO-TARGETING RADAR LOOP
+  // This constantly scans the array for the closest building to your current GPS point.
+  useEffect(() => {
+    if (!userLoc) return;
+
+    let closestSite = activeTarget;
+    let shortestDistance = Infinity;
+
+    GHOST_SITES.forEach((site) => {
+      const dLat = site.coords.latitude - userLoc.latitude;
+      const dLon = site.coords.longitude - userLoc.longitude;
+      const distY = dLat * 111320;
+      const distX =
+        dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
+      const realDist = Math.sqrt(distX * distX + distY * distY);
+
+      if (realDist < shortestDistance) {
+        shortestDistance = realDist;
+        closestSite = site;
+      }
+    });
+
+    // Only switch targets if we found a new closest ghost
+    if (closestSite.id !== activeTarget.id) {
+      setActiveTarget(closestSite);
+    }
+  }, [userLoc]); // Runs every time your GPS location updates
+
+  // 4. WAYFINDER MATH (Now uses dynamic activeTarget)
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
@@ -204,11 +252,10 @@ export default function App() {
     const realDist = Math.sqrt(distX * distX + distY * distY);
 
     if (!isNaN(realDist)) setDistanceToTarget(realDist);
-  }, [userLoc, trueHeading, vpsAccuracy]);
+  }, [userLoc, trueHeading, activeTarget]); // Updates immediately if activeTarget swaps
 
   if (!permission?.granted) return <View style={styles.load} />;
 
-  // CRASH FIX: Fallbacks to ensure rendering engine never receives a NaN value
   const safeDist = distanceToTarget || 0;
   const distFeet = Math.round(safeDist * 3.28084) || 0;
   const distMeters = Math.round(safeDist) || 0;
