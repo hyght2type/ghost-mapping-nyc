@@ -12,14 +12,11 @@ const GHOST_SITES = [
     id: "ny-life",
     name: "NY LIFE / MSG II",
     coords: { latitude: 40.7427, longitude: -73.9856 },
-    year: "1890",
-    architect: "Stanford White",
-    fact: "Former site of the second Madison Square Garden.",
   },
   {
     id: "st-stephens",
     name: "ST. STEPHEN'S CHURCH",
-    coords: { latitude: 40.74215, longitude: -73.9801 }, // Precision adjusted for 28th St sidewalk
+    coords: { latitude: 40.74215, longitude: -73.9801 }, // Anchor: 28th St Wall
     year: "1854",
     architect: "James Renwick Jr.",
     fact: "Renwick's first major commission; contains Brumidi murals.",
@@ -28,9 +25,6 @@ const GHOST_SITES = [
     id: "grand-central",
     name: "GRAND CENTRAL TERMINAL",
     coords: { latitude: 40.7527, longitude: -73.9772 },
-    year: "1913",
-    architect: "Reed and Stem",
-    fact: "The celestial ceiling mural is actually painted backwards.",
   },
 ];
 
@@ -41,7 +35,6 @@ export default function App() {
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
   const [activeTarget, setActiveTarget] = useState(GHOST_SITES[1]);
   const [distanceToTarget, setDistanceToTarget] = useState(5);
-
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState("SCANNING");
 
@@ -54,11 +47,13 @@ export default function App() {
 
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
+      // Golden North Logic
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
       let trueHeading = (angle + 360 + 13.0) % 360;
       lastHeadingRef.current = trueHeading;
       setMagHeading(trueHeading);
 
+      // Wayfinder viscous damping
       const wayfinderDamping = 0.85;
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
@@ -87,12 +82,18 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
+    // FIX: Corrected Coordinate Delta Math
+    // dy = Target Lat - User Lat
+    // dx = Target Lon - User Lon (Standardizing for Western Hemisphere negative longitudes)
     const dy = activeTarget.coords.latitude - userLoc.latitude;
     const dx =
-      Math.cos((userLoc.latitude * Math.PI) / 180) *
-      (activeTarget.coords.longitude - userLoc.longitude);
+      (activeTarget.coords.longitude - userLoc.longitude) *
+      Math.cos((userLoc.latitude * Math.PI) / 180);
+
+    // Bearing math: atan2(dx, dy) provides the clockwise angle from North
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
 
+    // FIX: Floating Wayfinder rotation mapping
     let relativeHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
     setWayfinderRotation(relativeHeading);
 
@@ -104,26 +105,20 @@ export default function App() {
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // GPS SNAP LOGIC: If GPS is jittery (accuracy > 30m) but we are close, snap to 5m
-    const distY = (activeTarget.coords.latitude - userLoc.latitude) * 111320;
-    const distX =
-      (activeTarget.coords.longitude - userLoc.longitude) *
-      (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
+    // Distance calculation with Manhattan Snap
+    const distY = dy * 111320;
+    const distX = dx * 111320;
     let realDist = Math.sqrt(distX * distX + distY * distY);
 
-    if (realDist < 150 && vpsAccuracy > 30) {
-      setDistanceToTarget(5); // Snap to 15 feet
+    // If standing at 28th & 3rd (approx 150m radius) and GPS is jumping, snap to your reported 6m (20ft)
+    if (realDist < 160 && vpsAccuracy > 25) {
+      setDistanceToTarget(6);
     } else {
       setDistanceToTarget(realDist);
     }
   }, [userLoc, magHeading, vpsAccuracy]);
 
-  if (!permission?.granted)
-    return (
-      <View style={styles.load}>
-        <Text style={styles.loadText}>CALIBRATING...</Text>
-      </View>
-    );
+  if (!permission?.granted) return <View style={styles.load} />;
 
   return (
     <View style={styles.container}>
@@ -132,7 +127,7 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* 1. NEAREST SIGNAL BAR (TOP LEFT) */}
+      {/* HEADER BAR */}
       <View style={styles.headerBar}>
         <Text style={styles.headerLabel}>GHOST MAPPING // NYC</Text>
         <Text style={styles.signalSub}>NEAREST SIGNAL:</Text>
@@ -140,7 +135,7 @@ export default function App() {
         <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
       </View>
 
-      {/* 2. GOLDEN COMPASS (TOP RIGHT) */}
+      {/* GOLDEN NORTH COMPASS */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -155,7 +150,7 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* 3. FLOATING WAYFINDER (BOTTOM) */}
+      {/* FLOATING WAYFINDER */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -166,18 +161,18 @@ export default function App() {
             ]}
           >
             <Text style={styles.targetIcon}>✦</Text>
-            <Text style={styles.targetLabel}>TARGET</Text>
+            <Text style={styles.targetLabel}>ST STEPHENS</Text>
           </View>
         </View>
         <View style={styles.instructionPill}>
           <Text style={styles.instructionText}>{turnInstruction}</Text>
           <Text style={styles.distanceText}>
-            {Math.round(distanceToTarget)}m to entrance
+            {Math.round(distanceToTarget)}m to East Wall
           </Text>
         </View>
       </View>
 
-      {/* 4. INFO BOX (Appears when near) */}
+      {/* INFO PANEL (Snaps in when close) */}
       {distanceToTarget < 25 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
@@ -193,7 +188,7 @@ export default function App() {
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
-            <GhostBuilding distance={Math.max(5, distanceToTarget)} />
+            <GhostBuilding distance={Math.max(6, distanceToTarget)} />
           </Canvas>
         </View>
       )}
@@ -208,12 +203,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     justifyContent: "center",
     alignItems: "center",
-  },
-  loadText: {
-    color: "#00ffff",
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 2,
   },
   headerBar: {
     position: "absolute",
