@@ -15,18 +15,18 @@ import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
 
-// Get screen dimensions for the ghost's path
 const { width, height } = Dimensions.get("window");
 
 const GHOST_SITES = [
   {
     id: "st-stephens",
-    name: "OUR LADY OF THE SCAPULAR – ST. STEPHEN",
+    name: "ST. STEPHEN THE FIRST MARTYR",
     address: "149 East 28th Street",
     coords: { latitude: 40.74245, longitude: -73.98045 },
-    year: "1854",
-    architect: "James Renwick Jr.",
-    fact: "Renwick's first major commission; contains 45 Brumidi murals.",
+    year: "EST. 1854",
+    architect: "JAMES RENWICK JR.",
+    heritage: "ROMANESQUE REVIVAL // BRUMIDI MURALS",
+    fact: "Commissioned by Dr. Jeremiah Cummings; the interior houses the largest collection of Brumidi's religious works in America.",
   },
 ];
 
@@ -42,15 +42,12 @@ export default function App() {
 
   const lastHeadingRef = useRef(0);
   const wayfinderSmoothRef = useRef(0);
-
-  // *** TEMPORARY: GHOST ANIMATION STATE ***
   const ghostAnimation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
-    // SENSOR ENGINE (NORTH COMPASS)
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
@@ -64,7 +61,6 @@ export default function App() {
         trueHeading * (1 - wayfinderDamping);
     });
 
-    // VPS HANDSHAKE
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -81,7 +77,6 @@ export default function App() {
       }
     })();
 
-    // *** TEMPORARY: GHOST ANIMATION LOOP (11 seconds) ***
     Animated.loop(
       Animated.timing(ghostAnimation, {
         toValue: 1,
@@ -93,7 +88,6 @@ export default function App() {
 
     return () => {
       magSub.remove();
-      // Ensure ghost animation is stopped upon component unmount
       ghostAnimation.stopAnimation();
     };
   }, [permission]);
@@ -101,22 +95,20 @@ export default function App() {
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // TARGET BEARING & ROTATION Fix
     const dy = activeTarget.coords.latitude - userLoc.latitude;
     const dx = activeTarget.coords.longitude - userLoc.longitude;
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
     let relHeading = (bearing - wayfinderSmoothRef.current + 180 + 360) % 360;
     setWayfinderRotation(relHeading);
 
-    // TURN SIGNAL
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
+
     if (Math.abs(diff) < 35) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // DISTANCE & SNAP
     const distY = dy * 111320;
     const distX = dx * (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
     let realDist = Math.sqrt(distX * distX + distY * distY);
@@ -127,27 +119,19 @@ export default function App() {
     }
   }, [userLoc, magHeading, vpsAccuracy]);
 
-  if (!permission?.granted)
-    return (
-      <View style={styles.load}>
-        <Text style={styles.loadText}>INITIALIZING...</Text>
-      </View>
-    );
+  if (!permission?.granted) return <View style={styles.load} />;
 
-  // *** TEMPORARY: GHOST POSITION INTERPOLATION ***
   const ghostX = ghostAnimation.interpolate({
     inputRange: [0, 1],
-    outputRange: [-200, width + 200], // Start and end far off-screen
+    outputRange: [-200, width + 200],
   });
-
   const ghostY = ghostAnimation.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [height * 0.2, height * 0.1, height * 0.2], // Gentle bobbing motion
+    outputRange: [height * 0.2, height * 0.1, height * 0.2],
   });
-
   const ghostOpacity = ghostAnimation.interpolate({
     inputRange: [0, 0.1, 0.9, 1],
-    outputRange: [0, 0.6, 0.6, 0], // Fade in/out as it crosses
+    outputRange: [0, 0.6, 0.6, 0],
   });
 
   return (
@@ -157,7 +141,6 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
-      {/* *** TEMPORARY: THE GHOST OVERLAY *** */}
       <Animated.View
         style={[
           styles.ghostContainer,
@@ -168,24 +151,20 @@ export default function App() {
         ]}
         pointerEvents="none"
       >
-        {/* Using a simplified human silhouette for the ghost shape */}
         <Text style={styles.ghostSymbol}>👤</Text>
         <Text style={styles.ghostText}>// RESIDUAL SIGNAL...</Text>
       </Animated.View>
 
-      {/* VPS HEADER BAR */}
+      {/* REPLACED: VPS LABEL REMOVED FOR HISTORICAL CONTEXT */}
       <View style={styles.headerBar}>
-        <Text style={styles.headerLabel}>
-          GEO-SPATIAL VPS ACTIVATE // Lock: {activeTarget.address}
-        </Text>
+        <Text style={styles.headerLabel}>{activeTarget.heritage}</Text>
         <View style={styles.signalContent}>
-          <Text style={styles.signalSub}>NEAREST GHOST:</Text>
+          <Text style={styles.signalSub}>{activeTarget.year}</Text>
           <Text style={styles.signalName}>{activeTarget.name}</Text>
-          <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
+          <Text style={styles.signalDist}>{activeTarget.architect}</Text>
         </View>
       </View>
 
-      {/* GOLDEN COMPASS (TOP RIGHT) */}
       <View style={styles.compassPosition}>
         <View
           style={[
@@ -200,7 +179,6 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* FLOATING WAYFINDER (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -222,7 +200,6 @@ export default function App() {
         </View>
       </View>
 
-      {/* INFO PANEL */}
       {distanceToTarget < 25 && (
         <View style={styles.infoPanel} pointerEvents="none">
           <Text style={styles.infoTitle}>{activeTarget.name}</Text>
@@ -233,7 +210,6 @@ export default function App() {
         </View>
       )}
 
-      {/* 3D AR CANVAS */}
       {turnInstruction === "TARGET LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -254,14 +230,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  loadText: {
-    color: "#00ffff",
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
-
-  // *** TEMPORARY GHOST STYLES ***
   ghostContainer: {
     position: "absolute",
     width: 250,
@@ -279,8 +247,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 2,
   },
-
-  // HUD STYLES
   headerBar: {
     position: "absolute",
     top: 50,
@@ -294,7 +260,7 @@ const styles = StyleSheet.create({
   },
   headerLabel: {
     color: "#00ffff",
-    fontSize: 7,
+    fontSize: 8,
     fontWeight: "900",
     letterSpacing: 1.5,
     marginBottom: 5,
@@ -305,7 +271,13 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   signalName: { color: "#fff", fontSize: 13, fontWeight: "900" },
-  signalDist: { color: "#fff", fontSize: 22, fontWeight: "300" },
+  signalDist: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "300",
+    marginTop: 2,
+    letterSpacing: 1,
+  },
   compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   ring: {
     width: 60,
