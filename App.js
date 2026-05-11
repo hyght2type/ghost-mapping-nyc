@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
-import { StyleSheet, View, Text, StatusBar } from "react-native";
+import {
+  StyleSheet,
+  View,
+  Text,
+  StatusBar,
+  Animated,
+  Easing,
+  Dimensions,
+} from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
 import { Magnetometer } from "expo-sensors";
@@ -7,15 +15,18 @@ import * as Location from "expo-location";
 
 import { GhostBuilding } from "./src/components/GhostBuilding";
 
+// Get screen dimensions for the ghost's path
+const { width, height } = Dimensions.get("window");
+
 const GHOST_SITES = [
   {
     id: "st-stephens",
-    name: "ST. STEPHEN'S CHURCH",
+    name: "OUR LADY OF THE SCAPULAR – ST. STEPHEN",
     address: "149 East 28th Street",
     coords: { latitude: 40.74245, longitude: -73.98045 },
     year: "1854",
     architect: "James Renwick Jr.",
-    fact: "Renwick's first major commission; contains Brumidi murals.",
+    fact: "Renwick's first major commission; contains 45 Brumidi murals.",
   },
 ];
 
@@ -32,26 +43,28 @@ export default function App() {
   const lastHeadingRef = useRef(0);
   const wayfinderSmoothRef = useRef(0);
 
+  // *** TEMPORARY: GHOST ANIMATION STATE ***
+  const ghostAnimation = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
-    // SENSOR ENGINE: GOLDEN COMPASS LOGIC
+    // SENSOR ENGINE (NORTH COMPASS)
     Magnetometer.setUpdateInterval(40);
     const magSub = Magnetometer.addListener((data) => {
-      // 1. TOP RIGHT COMPASS (Standard)
       let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
       let trueHeading = (angle + 360 + 13.0) % 360;
       lastHeadingRef.current = trueHeading;
       setMagHeading(trueHeading);
 
-      // 2. WAYFINDER DAMPING POOL
       const wayfinderDamping = 0.88;
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
         trueHeading * (1 - wayfinderDamping);
     });
 
+    // VPS HANDSHAKE
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
@@ -68,36 +81,45 @@ export default function App() {
       }
     })();
 
-    return () => magSub.remove();
+    // *** TEMPORARY: GHOST ANIMATION LOOP (11 seconds) ***
+    Animated.loop(
+      Animated.timing(ghostAnimation, {
+        toValue: 1,
+        duration: 11000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    ).start();
+
+    return () => {
+      magSub.remove();
+      // Ensure ghost animation is stopped upon component unmount
+      ghostAnimation.stopAnimation();
+    };
   }, [permission]);
 
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
-    // COORDINATE CALCULATION
+    // TARGET BEARING & ROTATION Fix
     const dy = activeTarget.coords.latitude - userLoc.latitude;
     const dx = activeTarget.coords.longitude - userLoc.longitude;
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
-
-    // FIX: 180 DEGREE FLIP
-    // We add 180 to the relative heading to correct the 'upside down' sensor mapping
     let relHeading = (bearing - wayfinderSmoothRef.current + 180 + 360) % 360;
     setWayfinderRotation(relHeading);
 
-    // TURN LOGIC
+    // TURN SIGNAL
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
-
     if (Math.abs(diff) < 35) setTurnInstruction("TARGET LOCKED");
     else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
     else setTurnInstruction("TURN RIGHT ▶");
 
-    // DISTANCE SNAP
+    // DISTANCE & SNAP
     const distY = dy * 111320;
     const distX = dx * (111320 * Math.cos((userLoc.latitude * Math.PI) / 180));
     let realDist = Math.sqrt(distX * distX + distY * distY);
-
     if (realDist < 160 && vpsAccuracy > 25) {
       setDistanceToTarget(6);
     } else {
@@ -105,7 +127,28 @@ export default function App() {
     }
   }, [userLoc, magHeading, vpsAccuracy]);
 
-  if (!permission?.granted) return <View style={styles.load} />;
+  if (!permission?.granted)
+    return (
+      <View style={styles.load}>
+        <Text style={styles.loadText}>INITIALIZING...</Text>
+      </View>
+    );
+
+  // *** TEMPORARY: GHOST POSITION INTERPOLATION ***
+  const ghostX = ghostAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-200, width + 200], // Start and end far off-screen
+  });
+
+  const ghostY = ghostAnimation.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [height * 0.2, height * 0.1, height * 0.2], // Gentle bobbing motion
+  });
+
+  const ghostOpacity = ghostAnimation.interpolate({
+    inputRange: [0, 0.1, 0.9, 1],
+    outputRange: [0, 0.6, 0.6, 0], // Fade in/out as it crosses
+  });
 
   return (
     <View style={styles.container}>
@@ -114,12 +157,32 @@ export default function App() {
         <CameraView style={{ flex: 1 }} facing="back" active={true} />
       </View>
 
+      {/* *** TEMPORARY: THE GHOST OVERLAY *** */}
+      <Animated.View
+        style={[
+          styles.ghostContainer,
+          {
+            transform: [{ translateX: ghostX }, { translateY: ghostY }],
+            opacity: ghostOpacity,
+          },
+        ]}
+        pointerEvents="none"
+      >
+        {/* Using a simplified human silhouette for the ghost shape */}
+        <Text style={styles.ghostSymbol}>👤</Text>
+        <Text style={styles.ghostText}>// RESIDUAL SIGNAL...</Text>
+      </Animated.View>
+
       {/* VPS HEADER BAR */}
       <View style={styles.headerBar}>
-        <Text style={styles.headerLabel}>VPS ACTIVE // GEO-SPATIAL LOCK</Text>
-        <Text style={styles.signalSub}>NEAREST SIGNAL:</Text>
-        <Text style={styles.signalName}>{activeTarget.name}</Text>
-        <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
+        <Text style={styles.headerLabel}>
+          GEO-SPATIAL VPS ACTIVATE // Lock: {activeTarget.address}
+        </Text>
+        <View style={styles.signalContent}>
+          <Text style={styles.signalSub}>NEAREST GHOST:</Text>
+          <Text style={styles.signalName}>{activeTarget.name}</Text>
+          <Text style={styles.signalDist}>{Math.round(distanceToTarget)}m</Text>
+        </View>
       </View>
 
       {/* GOLDEN COMPASS (TOP RIGHT) */}
@@ -137,7 +200,7 @@ export default function App() {
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* WAYFINDER (BOTTOM) */}
+      {/* FLOATING WAYFINDER (BOTTOM) */}
       <View style={styles.wayfinderLayer} pointerEvents="none">
         <View style={styles.compassBase}>
           <View style={styles.lubberLine} />
@@ -148,12 +211,14 @@ export default function App() {
             ]}
           >
             <Text style={styles.targetIcon}>✦</Text>
-            <Text style={styles.targetLabel}>TARGET</Text>
+            <Text style={styles.targetLabel}>FRONT DOOR</Text>
           </View>
         </View>
         <View style={styles.instructionPill}>
           <Text style={styles.instructionText}>{turnInstruction}</Text>
-          <Text style={styles.distanceText}>Locking: 149 E 28th St</Text>
+          <Text style={styles.distanceText}>
+            {Math.round(distanceToTarget)}m to entrance
+          </Text>
         </View>
       </View>
 
@@ -189,6 +254,33 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  loadText: {
+    color: "#00ffff",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+
+  // *** TEMPORARY GHOST STYLES ***
+  ghostContainer: {
+    position: "absolute",
+    width: 250,
+    height: 250,
+    zIndex: 10000,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  ghostSymbol: { fontSize: 120, color: "rgba(0, 255, 255, 0.4)" },
+  ghostText: {
+    position: "absolute",
+    bottom: 30,
+    color: "rgba(0, 255, 255, 0.6)",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 2,
+  },
+
+  // HUD STYLES
   headerBar: {
     position: "absolute",
     top: 50,
@@ -202,9 +294,9 @@ const styles = StyleSheet.create({
   },
   headerLabel: {
     color: "#00ffff",
-    fontSize: 9,
+    fontSize: 7,
     fontWeight: "900",
-    letterSpacing: 2,
+    letterSpacing: 1.5,
     marginBottom: 5,
   },
   signalSub: {
@@ -212,7 +304,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "bold",
   },
-  signalName: { color: "#fff", fontSize: 18, fontWeight: "900" },
+  signalName: { color: "#fff", fontSize: 13, fontWeight: "900" },
   signalDist: { color: "#fff", fontSize: 22, fontWeight: "300" },
   compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   ring: {
