@@ -1,3 +1,4 @@
+cat << "EOF" > App.js;
 import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
@@ -36,7 +37,6 @@ export default function App() {
   const [userLoc, setUserLoc] = useState(null);
   const [vpsAccuracy, setVpsAccuracy] = useState(100);
 
-  // STATE: Headings
   const [trueHeading, setTrueHeading] = useState(0);
   const [flatHeading, setFlatHeading] = useState(0);
 
@@ -51,8 +51,9 @@ export default function App() {
   const wayfinderSmoothRef = useRef(0);
   const ghostAnimation = useRef(new Animated.Value(0)).current;
 
+  // Optimized Madgwick (Beta 0.04)
   const madgwick = useRef(
-    new AHRS({ sampleInterval: 20, algorithm: "Madgwick", beta: 0.1 }),
+    new AHRS({ sampleInterval: 33, algorithm: "Madgwick", beta: 0.04 }),
   ).current;
   const sensors = useRef({
     ax: 0,
@@ -66,38 +67,38 @@ export default function App() {
     mz: 0,
   }).current;
 
-  // ==========================================
-  // MASTER CALIBRATION: Change this number to tweak alignment
-  // Negative (-) pulls UI Left. Positive (+) pulls UI Right.
-  const GLOBAL_YAW_OFFSET = -15.0;
-  // ==========================================
+  // UI Yaw Calibration
+  const GLOBAL_YAW_OFFSET = 15.0;
+
+  const lowPass = (current, previous, alpha = 0.2) => {
+    return previous + alpha * (current - previous);
+  };
 
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain)
       requestPermission();
 
-    Accelerometer.setUpdateInterval(20);
-    Gyroscope.setUpdateInterval(20);
-    Magnetometer.setUpdateInterval(20);
+    // Bridge-friendly 30Hz polling
+    Accelerometer.setUpdateInterval(33);
+    Gyroscope.setUpdateInterval(33);
+    Magnetometer.setUpdateInterval(33);
 
     const accSub = Accelerometer.addListener((data) => {
-      sensors.ax = data.x;
-      sensors.ay = data.y;
-      sensors.az = data.z;
+      sensors.ax = lowPass(data.x, sensors.ax);
+      sensors.ay = lowPass(data.y, sensors.ay);
+      sensors.az = lowPass(data.z, sensors.az);
     });
     const gyroSub = Gyroscope.addListener((data) => {
-      sensors.gx = data.x;
-      sensors.gy = data.y;
-      sensors.gz = data.z;
+      sensors.gx = lowPass(data.x, sensors.gx, 0.5);
+      sensors.gy = lowPass(data.y, sensors.gy, 0.5);
+      sensors.gz = lowPass(data.z, sensors.gz, 0.5);
     });
-
     const magSub = Magnetometer.addListener((data) => {
-      sensors.mx = data.x;
-      sensors.my = data.y;
-      sensors.mz = data.z;
+      sensors.mx = lowPass(data.x, sensors.mx, 0.1);
+      sensors.my = lowPass(data.y, sensors.my, 0.1);
+      sensors.mz = lowPass(data.z, sensors.mz, 0.1);
 
-      let angle = Math.atan2(data.z, -data.x) * (180 / Math.PI);
-      // Applied Global Yaw Offset
+      let angle = Math.atan2(sensors.mz, -sensors.mx) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
       setFlatHeading(heading);
     });
@@ -117,7 +118,6 @@ export default function App() {
 
       const euler = madgwick.getEulerAngles();
 
-      // Applied Global Yaw Offset
       let fusedHeading =
         (euler.heading * (180 / Math.PI) +
           90 +
@@ -133,7 +133,7 @@ export default function App() {
       wayfinderSmoothRef.current =
         wayfinderSmoothRef.current * wayfinderDamping +
         fusedHeading * (1 - wayfinderDamping);
-    }, 20);
+    }, 33);
 
     let locSub;
     (async () => {
@@ -459,3 +459,4 @@ const styles = StyleSheet.create({
   },
   infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
 });
+EOF;
