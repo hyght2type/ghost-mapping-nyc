@@ -139,8 +139,9 @@ export default function App() {
       compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
       compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
 
+      // FIX: Corrected Math.atan2 arguments for pure portrait magnetometer reading
       let angle =
-        Math.atan2(compassSensors.z, -compassSensors.x) * (180 / Math.PI);
+        Math.atan2(-compassSensors.x, -compassSensors.z) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
 
       if (!isNaN(heading)) setFlatHeading(heading);
