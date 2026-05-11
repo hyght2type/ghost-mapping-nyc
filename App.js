@@ -109,23 +109,28 @@ export default function App() {
     Gyroscope.setUpdateInterval(33);
     Magnetometer.setUpdateInterval(33);
 
+    // FIX: The Virtual Flat Desk Transformation.
+    // We map the upright portrait sensors to mimic a phone lying flat.
+    // This perfectly aligns gravity to the Z-axis (+1G), stopping the upside-down inversion.
     const accSub = Accelerometer.addListener((data) => {
-      sensors.ax = lowPass(-data.z, sensors.ax);
-      sensors.ay = lowPass(data.x, sensors.ay);
-      sensors.az = lowPass(-data.y, sensors.az);
+      sensors.ax = lowPass(data.x, sensors.ax);
+      sensors.ay = lowPass(-data.z, sensors.ay);
+      sensors.az = lowPass(data.y, sensors.az);
     });
 
     const gyroSub = Gyroscope.addListener((data) => {
-      sensors.gx = lowPass(-data.z, sensors.gx, 0.5);
-      sensors.gy = lowPass(data.x, sensors.gy, 0.5);
-      sensors.gz = lowPass(-data.y, sensors.gz, 0.5);
+      sensors.gx = lowPass(data.x, sensors.gx, 0.5);
+      sensors.gy = lowPass(-data.z, sensors.gy, 0.5);
+      sensors.gz = lowPass(data.y, sensors.gz, 0.5);
     });
 
     const magSub = Magnetometer.addListener((data) => {
-      sensors.mx = lowPass(-data.z, sensors.mx, 0.1);
-      sensors.my = lowPass(data.x, sensors.my, 0.1);
-      sensors.mz = lowPass(-data.y, sensors.mz, 0.1);
+      // Wayfinder (Virtual Flat Stream)
+      sensors.mx = lowPass(data.x, sensors.mx, 0.1);
+      sensors.my = lowPass(-data.z, sensors.my, 0.1);
+      sensors.mz = lowPass(data.y, sensors.mz, 0.1);
 
+      // Golden Compass (Untouched Pure Portrait Stream)
       compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
       compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
 
@@ -151,9 +156,10 @@ export default function App() {
 
       const euler = madgwick.getEulerAngles();
 
-      // FIX: Stripped the artificial + 180 degree error here. Math is now pure.
+      // Since we are now using a Virtual Flat frame, we extract the pure yaw.
+      // The negative sign ensures the Madgwick math turns the correct clockwise direction.
       let fusedHeading =
-        (euler.heading * (180 / Math.PI) + 360 + 13.0 + GLOBAL_YAW_OFFSET) %
+        (-euler.heading * (180 / Math.PI) + 360 + 13.0 + GLOBAL_YAW_OFFSET) %
         360;
 
       if (!isNaN(fusedHeading)) {
