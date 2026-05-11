@@ -65,6 +65,7 @@ const GHOST_SITES = [
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
   const [userLoc, setUserLoc] = useState(null);
+  const userLocRef = useRef(null);
 
   const [trueHeading, setTrueHeading] = useState(0);
   const [flatHeading, setFlatHeading] = useState(0);
@@ -79,6 +80,10 @@ export default function App() {
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState(
     "CALIBRATING SENSORS...",
+  );
+
+  const [routeInstruction, setRouteInstruction] = useState(
+    "AWAITING NETWORK...",
   );
 
   const lastHeadingRef = useRef(0);
@@ -104,6 +109,12 @@ export default function App() {
   const GLOBAL_YAW_OFFSET = -15.0;
   const MAX_DETECTION_RADIUS = 150;
   const CAPTURE_RADIUS = 15;
+
+  // =========================================================
+  // PASTE YOUR GOOGLE CLOUD DIRECTIONS API KEY HERE
+  // =========================================================
+  const GOOGLE_API_KEY = "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U";
+  // =========================================================
 
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
@@ -139,7 +150,7 @@ export default function App() {
       compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
       compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
 
-      // FIX: Corrected Math.atan2 arguments for pure portrait magnetometer reading
+      // The properly fixed Golden Compass math
       let angle =
         Math.atan2(-compassSensors.x, -compassSensors.z) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
@@ -187,7 +198,10 @@ export default function App() {
             distanceInterval: 0.1,
           },
           (loc) => {
-            if (loc?.coords) setUserLoc(loc.coords);
+            if (loc?.coords) {
+              setUserLoc(loc.coords);
+              userLocRef.current = loc.coords;
+            }
           },
         );
       }
@@ -211,6 +225,48 @@ export default function App() {
       ghostAnimation.stopAnimation();
     };
   }, [permission]);
+
+  // The restored Google Maps Routing logic
+  useEffect(() => {
+    if (GOOGLE_API_KEY === "YOUR_API_KEY_HERE" || !GOOGLE_API_KEY) {
+      setRouteInstruction("ROUTING OFFLINE // API KEY REQUIRED");
+      return;
+    }
+
+    const fetchRoute = async () => {
+      if (!userLocRef.current || !activeTarget) return;
+
+      try {
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${userLocRef.current.latitude},${userLocRef.current.longitude}&destination=${activeTarget.coords.latitude},${activeTarget.coords.longitude}&mode=walking&key=${GOOGLE_API_KEY}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.routes && data.routes.length > 0) {
+          const steps = data.routes[0].legs[0].steps;
+          if (steps && steps.length > 0) {
+            let cleanInstruction = steps[0].html_instructions.replace(
+              /<[^>]*>?/gm,
+              "",
+            );
+            let distanceStr = steps[0].distance.text;
+            setRouteInstruction(
+              `${cleanInstruction.toUpperCase()} (${distanceStr})`,
+            );
+          } else {
+            setRouteInstruction("PROCEED DIRECTLY TO TARGET");
+          }
+        } else {
+          setRouteInstruction("SIGNAL LOST // NO ROUTE FOUND");
+        }
+      } catch (error) {
+        setRouteInstruction("NETWORK ERROR");
+      }
+    };
+
+    fetchRoute();
+    const routeInterval = setInterval(fetchRoute, 10000);
+    return () => clearInterval(routeInterval);
+  }, [activeTarget]);
 
   useEffect(() => {
     if (!userLoc) return;
@@ -262,7 +318,7 @@ export default function App() {
     const hasBeenCaptured = capturedGhosts.includes(activeTarget.id);
 
     if (!inRange) {
-      setTurnInstruction("SIGNAL LOST // APPROACH TARGET");
+      setTurnInstruction("APPROACHING TARGET REGION");
     } else if (hasBeenCaptured) {
       setTurnInstruction("SIGNAL CONTAINED");
     } else {
@@ -458,6 +514,15 @@ export default function App() {
             >
               {turnInstruction}
             </Text>
+            <Text
+              style={[
+                styles.routeInstructionText,
+                !inRange && styles.textOut,
+                isCaptured && styles.textCaptured,
+              ]}
+            >
+              {isCaptured ? "TARGET SECURED" : routeInstruction}
+            </Text>
           </View>
         )}
       </View>
@@ -621,6 +686,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     letterSpacing: 1,
+  },
+  routeInstructionText: {
+    color: "#00ffff",
+    fontSize: 9,
+    fontWeight: "600",
+    letterSpacing: 1.5,
+    marginTop: 4,
+    opacity: 0.8,
+    textAlign: "center",
   },
 
   captureButton: {
