@@ -34,7 +34,8 @@ const GHOST_SITES = [
     id: "st-stephens",
     name: "ST. STEPHEN THE FIRST MARTYR",
     address: "149 East 28th Street",
-    coords: { latitude: 40.74245, longitude: -73.98045 },
+    // FIX: Shifted the GPS coordinate South from the center of the structure directly onto the 28th Street front steps
+    coords: { latitude: 40.74222, longitude: -73.98038 },
     year: "EST. 1854",
     architect: "JAMES RENWICK JR.",
     heritage: "ROMANESQUE REVIVAL // BRUMIDI MURALS",
@@ -110,11 +111,7 @@ export default function App() {
   const MAX_DETECTION_RADIUS = 150;
   const CAPTURE_RADIUS = 15;
 
-  // =========================================================
-  // PASTE YOUR GOOGLE CLOUD DIRECTIONS API KEY HERE
-  // =========================================================
-  const GOOGLE_API_KEY = "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U";
-  // =========================================================
+  const GOOGLE_API_KEY = "YOUR_API_KEY_HERE";
 
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
@@ -150,7 +147,6 @@ export default function App() {
       compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
       compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
 
-      // The properly fixed Golden Compass math
       let angle =
         Math.atan2(-compassSensors.x, -compassSensors.z) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
@@ -226,7 +222,6 @@ export default function App() {
     };
   }, [permission]);
 
-  // The restored Google Maps Routing logic
   useEffect(() => {
     if (GOOGLE_API_KEY === "YOUR_API_KEY_HERE" || !GOOGLE_API_KEY) {
       setRouteInstruction("ROUTING OFFLINE // API KEY REQUIRED");
