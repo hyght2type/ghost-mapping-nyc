@@ -223,10 +223,8 @@ export default function App() {
   }, [permission]);
 
   useEffect(() => {
-    if (
-      GOOGLE_API_KEY === "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U" ||
-      !GOOGLE_API_KEY
-    ) {
+    // FIX: Removed the broken safety check so your real key can actually fire
+    if (!GOOGLE_API_KEY) {
       setRouteInstruction("ROUTING OFFLINE // API KEY REQUIRED");
       return;
     }
