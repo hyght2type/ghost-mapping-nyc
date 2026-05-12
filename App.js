@@ -111,7 +111,7 @@ export default function App() {
   const MAX_DETECTION_RADIUS = 150;
   const CAPTURE_RADIUS = 15;
 
-  const GOOGLE_API_KEY = "YOUR_API_KEY_HERE";
+  const GOOGLE_API_KEY = "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U";
 
   const lowPass = (current, previous, alpha = 0.2) => {
     if (current === undefined || current === null || isNaN(current))
@@ -223,7 +223,10 @@ export default function App() {
   }, [permission]);
 
   useEffect(() => {
-    if (GOOGLE_API_KEY === "YOUR_API_KEY_HERE" || !GOOGLE_API_KEY) {
+    if (
+      GOOGLE_API_KEY === "AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U" ||
+      !GOOGLE_API_KEY
+    ) {
       setRouteInstruction("ROUTING OFFLINE // API KEY REQUIRED");
       return;
     }
