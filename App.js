@@ -8,6 +8,7 @@ import {
   Easing,
   Dimensions,
   TouchableOpacity,
+  ScrollView,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Canvas } from "@react-three/fiber/native";
@@ -78,13 +79,12 @@ export default function App() {
 
   const [distanceToTarget, setDistanceToTarget] = useState(0);
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
-  const [turnInstruction, setTurnInstruction] = useState(
-    "CALIBRATING SENSORS...",
-  );
+  const [turnInstruction, setTurnInstruction] = useState("CALIBRATING...");
 
-  const [routeInstruction, setRouteInstruction] = useState(
-    "AWAITING NETWORK...",
-  );
+  // NEW: More descriptive routing state
+  const [currentStep, setCurrentStep] = useState("AWAITING GPS...");
+  const [nextStep, setNextStep] = useState("");
+  const [stepDistance, setStepDistance] = useState("");
 
   const lastHeadingRef = useRef(0);
   const wayfinderSmoothRef = useRef(0);
@@ -142,14 +142,12 @@ export default function App() {
       sensors.mx = lowPass(data.x, sensors.mx, 0.1);
       sensors.my = lowPass(-data.z, sensors.my, 0.1);
       sensors.mz = lowPass(data.y, sensors.mz, 0.1);
-
       compassSensors.x = lowPass(data.x, compassSensors.x, 0.1);
       compassSensors.z = lowPass(data.z, compassSensors.z, 0.1);
 
       let angle =
         Math.atan2(-compassSensors.x, -compassSensors.z) * (180 / Math.PI);
       let heading = (angle + 360 + 13.0 + GLOBAL_YAW_OFFSET) % 360;
-
       if (!isNaN(heading)) setFlatHeading(heading);
     });
 
@@ -165,17 +163,13 @@ export default function App() {
         sensors.my,
         sensors.mz,
       );
-
       const euler = madgwick.getEulerAngles();
-
       let fusedHeading =
         (-euler.heading * (180 / Math.PI) + 360 + 13.0 + GLOBAL_YAW_OFFSET) %
         360;
-
       if (!isNaN(fusedHeading)) {
         lastHeadingRef.current = fusedHeading;
         setTrueHeading(fusedHeading);
-
         const wayfinderDamping = 0.85;
         wayfinderSmoothRef.current =
           wayfinderSmoothRef.current * wayfinderDamping +
@@ -221,9 +215,10 @@ export default function App() {
     };
   }, [permission]);
 
+  // ENHANCED ROUTING ENGINE: Grabs current and next step
   useEffect(() => {
     if (!GOOGLE_API_KEY) {
-      setRouteInstruction("ROUTING OFFLINE // API KEY REQUIRED");
+      setCurrentStep("AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U");
       return;
     }
 
@@ -238,34 +233,41 @@ export default function App() {
         if (data.routes && data.routes.length > 0) {
           const steps = data.routes[0].legs[0].steps;
           if (steps && steps.length > 0) {
-            let cleanInstruction = steps[0].html_instructions.replace(
+            // Parse Current Step
+            let currentRaw = steps[0].html_instructions.replace(
               /<[^>]*>?/gm,
               "",
             );
-            let distanceStr = steps[0].distance.text;
-            setRouteInstruction(
-              `${cleanInstruction.toUpperCase()} (${distanceStr})`,
-            );
-          } else {
-            setRouteInstruction("PROCEED DIRECTLY TO TARGET");
+            setCurrentStep(currentRaw.toUpperCase());
+            setStepDistance(steps[0].distance.text);
+
+            // Parse Next Step if it exists
+            if (steps.length > 1) {
+              let nextRaw = steps[1].html_instructions.replace(
+                /<[^>]*>?/gm,
+                "",
+              );
+              setNextStep(`THEN: ${nextRaw.toUpperCase()}`);
+            } else {
+              setNextStep("DESTINATION AHEAD");
+            }
           }
         } else {
-          setRouteInstruction("SIGNAL LOST // NO ROUTE FOUND");
+          setCurrentStep("SIGNAL LOST // NO PATH FOUND");
+          setNextStep("");
         }
       } catch (error) {
-        setRouteInstruction("NETWORK ERROR");
+        setCurrentStep("NETWORK ERROR");
       }
     };
 
     fetchRoute();
-    const routeInterval = setInterval(fetchRoute, 10000);
+    const routeInterval = setInterval(fetchRoute, 8000); // Slightly faster polling for city walking
     return () => clearInterval(routeInterval);
   }, [activeTarget]);
 
-  // FIX: This loop now ONLY handles the Auto-Radar switching logic
   useEffect(() => {
     if (!userLoc) return;
-
     let closestSite = activeTarget;
     let shortestDistance = Infinity;
 
@@ -276,7 +278,6 @@ export default function App() {
       const distX =
         dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
       const realDist = Math.sqrt(distX * distX + distY * distY);
-
       if (realDist < shortestDistance) {
         shortestDistance = realDist;
         closestSite = site;
@@ -288,199 +289,112 @@ export default function App() {
     }
   }, [userLoc, autoRadarActive, activeTarget]);
 
-  // FIX: This loop now precisely tracks the inRange state specifically for the ACTIVE target
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
-
     const dLat = activeTarget.coords.latitude - userLoc.latitude;
     const dLon = activeTarget.coords.longitude - userLoc.longitude;
+    const realDist = Math.sqrt(
+      Math.pow(dLat * 111320, 2) +
+        Math.pow(
+          dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180)),
+          2,
+        ),
+    );
 
-    const distY = dLat * 111320;
-    const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
-    const realDist = Math.sqrt(distX * distX + distY * distY);
+    setDistanceToTarget(realDist);
+    const currentInRange = realDist <= MAX_DETECTION_RADIUS;
+    setInRange(currentInRange);
 
-    let currentInRange = false;
-    if (!isNaN(realDist)) {
-      setDistanceToTarget(realDist);
-      currentInRange = realDist <= MAX_DETECTION_RADIUS;
-      setInRange(currentInRange);
-    }
-
-    const dy = dLat;
-    const dx = dLon * Math.cos(userLoc.latitude * (Math.PI / 180));
-    const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
-
-    let relHeading = (bearing - wayfinderSmoothRef.current + 360) % 360;
-    if (!isNaN(relHeading)) setWayfinderRotation(relHeading);
+    const bearing =
+      (Math.atan2(dLon * Math.cos(userLoc.latitude * (Math.PI / 180)), dLat) *
+        (180 / Math.PI) +
+        360) %
+      360;
+    setWayfinderRotation((bearing - wayfinderSmoothRef.current + 360) % 360);
 
     let diff = bearing - lastHeadingRef.current;
     if (diff > 180) diff -= 360;
     if (diff < -180) diff += 360;
 
-    const hasBeenCaptured = capturedGhosts.includes(activeTarget.id);
-
-    if (!currentInRange) {
-      setTurnInstruction("APPROACHING TARGET REGION");
-    } else if (hasBeenCaptured) {
-      setTurnInstruction("SIGNAL CONTAINED");
-    } else {
-      if (Math.abs(diff) < 20) setTurnInstruction("TARGET LOCKED");
-      else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
-      else setTurnInstruction("TURN RIGHT ▶");
+    if (!currentInRange) setTurnInstruction("SEARCHING...");
+    else if (capturedGhosts.includes(activeTarget.id))
+      setTurnInstruction("CONTAINED");
+    else {
+      if (Math.abs(diff) < 20) setTurnInstruction("LOCKED");
+      else if (diff < 0) setTurnInstruction("◀ LEFT");
+      else setTurnInstruction("RIGHT ▶");
     }
   }, [userLoc, trueHeading, activeTarget, capturedGhosts]);
 
   const cycleTarget = () => {
     setAutoRadarActive(false);
-    const currentIndex = GHOST_SITES.findIndex(
-      (site) => site.id === activeTarget.id,
-    );
-    const nextIndex = (currentIndex + 1) % GHOST_SITES.length;
-    setActiveTarget(GHOST_SITES[nextIndex]);
-  };
-
-  const handleCapture = () => {
-    if (!capturedGhosts.includes(activeTarget.id)) {
-      setCapturedGhosts([...capturedGhosts, activeTarget.id]);
-    }
+    const currentIndex = GHOST_SITES.findIndex((s) => s.id === activeTarget.id);
+    setActiveTarget(GHOST_SITES[(currentIndex + 1) % GHOST_SITES.length]);
   };
 
   if (!permission?.granted) return <View style={styles.load} />;
 
-  const safeDist = distanceToTarget || 0;
-  const distFeet = Math.round(safeDist * 3.28084) || 0;
-  const distMeters = Math.round(safeDist) || 0;
-
-  const safeFlatHeading = flatHeading || 0;
-  const safeWayfinderRot = wayfinderRotation || 0;
-
   const isCaptured = capturedGhosts.includes(activeTarget.id);
-  const readyToCapture = inRange && safeDist <= CAPTURE_RADIUS && !isCaptured;
-
-  const ghostX = ghostAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-200, width + 200],
-  });
-  const ghostY = ghostAnimation.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [height * 0.2, height * 0.1, height * 0.2],
-  });
-  const ghostOpacity = ghostAnimation.interpolate({
-    inputRange: [0, 0.1, 0.9, 1],
-    outputRange: [0, 0.6, 0.6, 0],
-  });
+  const readyToCapture =
+    inRange && distanceToTarget <= CAPTURE_RADIUS && !isCaptured;
 
   return (
     <View style={styles.container}>
       <StatusBar hidden />
-      <View style={StyleSheet.absoluteFill}>
-        <CameraView style={{ flex: 1 }} facing="back" active={true} />
-      </View>
+      <CameraView style={StyleSheet.absoluteFill} facing="back" active={true} />
 
-      {inRange && !isCaptured && (
-        <Animated.View
-          style={[
-            styles.ghostContainer,
-            {
-              transform: [{ translateX: ghostX }, { translateY: ghostY }],
-              opacity: ghostOpacity,
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <Text style={styles.ghostSymbol}>👤</Text>
-        </Animated.View>
-      )}
-
+      {/* HEADER HUD */}
       <TouchableOpacity
         style={[
           styles.headerBar,
           !inRange && styles.headerOut,
           isCaptured && styles.headerCaptured,
         ]}
-        activeOpacity={0.7}
         onPress={cycleTarget}
       >
-        <Text
-          style={[
-            styles.headerLabel,
-            !inRange && styles.textOut,
-            isCaptured && styles.textCaptured,
-          ]}
-        >
-          {autoRadarActive ? "RADAR: AUTO" : "RADAR: MANUAL"}
-          {isCaptured
-            ? " // CONTAINED"
-            : inRange
-              ? " // LOCKED"
-              : " // OUT OF RANGE"}
+        <Text style={styles.headerLabel}>
+          {autoRadarActive ? "AUTO-RADAR" : "MANUAL"} //{" "}
+          {isCaptured ? "ARCHIVED" : inRange ? "LOCKED" : "SCANNING"}
         </Text>
-        <View style={styles.signalContent}>
-          <Text style={[styles.signalSub, !inRange && styles.textOut]}>
-            {activeTarget.year}
-          </Text>
-          <Text
-            style={[
-              styles.signalName,
-              !inRange && styles.textOut,
-              isCaptured && styles.textCaptured,
-            ]}
-          >
-            {activeTarget.name}
-          </Text>
-          <Text style={[styles.signalDist, !inRange && styles.textOut]}>
-            {distFeet} FT // {distMeters} M
-          </Text>
-        </View>
+        <Text style={styles.signalName}>{activeTarget.name}</Text>
+        <Text style={styles.signalDist}>
+          {Math.round(distanceToTarget * 3.28084)} FT
+        </Text>
       </TouchableOpacity>
 
-      <View style={styles.compassPosition} pointerEvents="none">
+      {/* MINI COMPASS */}
+      <View style={styles.compassPosition}>
         <View
           style={[
             styles.ring,
-            { transform: [{ rotate: `${(360 - safeFlatHeading) % 360}deg` }] },
+            { transform: [{ rotate: `${(360 - flatHeading) % 360}deg` }] },
           ]}
         >
-          <View style={styles.northMarker}>
-            <Text style={styles.nText}>N</Text>
-          </View>
+          <Text style={styles.nText}>N</Text>
         </View>
         <View style={styles.fixedIndicator} />
       </View>
 
-      <View
-        style={[styles.wayfinderLayer, !inRange && styles.wayfinderDim]}
-        pointerEvents={readyToCapture ? "auto" : "none"}
-      >
+      {/* CENTRAL WAYFINDER & STEP-BY-STEP HUD */}
+      <View style={[styles.wayfinderLayer, !inRange && { opacity: 0.5 }]}>
         <View
-          style={[styles.compassBase, isCaptured && styles.compassCaptured]}
+          style={[styles.compassBase, isCaptured && { borderColor: "#ffd700" }]}
         >
           <View style={styles.lubberLine} />
           <View
             style={[
               styles.floatingDisc,
               {
-                transform: [{ rotate: `${inRange ? safeWayfinderRot : 0}deg` }],
+                transform: [
+                  { rotate: `${inRange ? wayfinderRotation : 0}deg` },
+                ],
               },
             ]}
           >
             <Text
-              style={[
-                styles.targetIcon,
-                !inRange && styles.iconOut,
-                isCaptured && styles.iconCaptured,
-              ]}
+              style={[styles.targetIcon, isCaptured && { color: "#ffd700" }]}
             >
               {isCaptured ? "✔" : "✦"}
-            </Text>
-            <Text
-              style={[
-                styles.targetLabel,
-                !inRange && styles.textOut,
-                isCaptured && styles.textCaptured,
-              ]}
-            >
-              {isCaptured ? "ARCHIVED" : inRange ? "FRONT DOOR" : "NO SIGNAL"}
             </Text>
           </View>
         </View>
@@ -488,47 +402,39 @@ export default function App() {
         {readyToCapture ? (
           <TouchableOpacity
             style={styles.captureButton}
-            onPress={handleCapture}
-            activeOpacity={0.8}
+            onPress={() =>
+              setCapturedGhosts([...capturedGhosts, activeTarget.id])
+            }
           >
-            <Text style={styles.captureText}>⚡ CAPTURE SIGNAL ⚡</Text>
+            <Text style={styles.captureText}>⚡ CAPTURE ⚡</Text>
           </TouchableOpacity>
         ) : (
-          <View
-            style={[
-              styles.instructionPill,
-              !inRange && styles.pillOut,
-              isCaptured && styles.pillCaptured,
-            ]}
-          >
-            <Text
-              style={[
-                styles.instructionText,
-                !inRange && styles.textOut,
-                isCaptured && styles.textCaptured,
-              ]}
-            >
-              {turnInstruction}
-            </Text>
-            <Text
-              style={[
-                styles.routeInstructionText,
-                !inRange && styles.textOut,
-                isCaptured && styles.textCaptured,
-              ]}
-            >
-              {isCaptured ? "TARGET SECURED" : routeInstruction}
-            </Text>
+          <View style={[styles.instructionPill, !inRange && styles.pillOut]}>
+            {/* PRIMARY DIRECTION (GEOMETRIC) */}
+            <Text style={styles.instructionText}>{turnInstruction}</Text>
+
+            {/* GOOGLE STREET INSTRUCTIONS */}
+            <View style={styles.routeContainer}>
+              <Text style={styles.routeCurrent}>
+                {isCaptured
+                  ? "TARGET SECURED"
+                  : `${currentStep} (${stepDistance})`}
+              </Text>
+              {!isCaptured && nextStep ? (
+                <Text style={styles.routeNext}>{nextStep}</Text>
+              ) : null}
+            </View>
           </View>
         )}
       </View>
 
-      {inRange && turnInstruction === "TARGET LOCKED" && (
+      {/* AR OVERLAY */}
+      {inRange && turnInstruction === "LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
             <ambientLight intensity={1.5} />
             <GhostBuilding
-              distance={Math.max(6, safeDist)}
+              distance={Math.max(6, distanceToTarget)}
               siteId={activeTarget.id}
               isCaptured={isCaptured}
             />
@@ -547,196 +453,122 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  ghostContainer: {
-    position: "absolute",
-    width: 250,
-    height: 250,
-    zIndex: 10000,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  ghostSymbol: { fontSize: 120, color: "rgba(0, 255, 255, 0.4)" },
-
   headerBar: {
     position: "absolute",
     top: 50,
     left: 20,
     width: "65%",
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.85)",
     padding: 15,
     borderRadius: 4,
     borderLeftWidth: 4,
     borderLeftColor: "#00ffff",
     zIndex: 10,
   },
-  headerOut: {
-    borderLeftColor: "#ff3333",
-    backgroundColor: "rgba(50,0,0,0.8)",
-  },
-  headerCaptured: {
-    borderLeftColor: "#ffd700",
-    backgroundColor: "rgba(50,40,0,0.8)",
-  },
+  headerOut: { borderLeftColor: "#ff3333" },
+  headerCaptured: { borderLeftColor: "#ffd700" },
   headerLabel: {
     color: "#00ffff",
     fontSize: 8,
     fontWeight: "900",
     letterSpacing: 1.5,
-    marginBottom: 5,
+    marginBottom: 4,
   },
-
-  signalSub: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 9,
-    fontWeight: "bold",
-  },
-  signalName: { color: "#fff", fontSize: 13, fontWeight: "900" },
-  signalDist: {
-    color: "#fff",
-    fontSize: 20,
-    fontWeight: "300",
-    marginTop: 2,
-    letterSpacing: 1,
-  },
-
+  signalName: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  signalDist: { color: "#fff", fontSize: 22, fontWeight: "300" },
   compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   ring: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     borderWidth: 2,
     borderColor: "#00ffff",
     backgroundColor: "rgba(0,0,0,0.8)",
     alignItems: "center",
     justifyContent: "center",
   },
-  northMarker: { position: "absolute", top: 2 },
-  nText: { color: "#00ffff", fontSize: 14, fontWeight: "900" },
+  nText: { color: "#00ffff", fontSize: 12, fontWeight: "900" },
   fixedIndicator: {
     position: "absolute",
     top: -4,
-    left: 28,
+    left: 23,
     width: 4,
-    height: 12,
+    height: 10,
     backgroundColor: "#ff3333",
     borderRadius: 2,
   },
-
   wayfinderLayer: {
     position: "absolute",
-    bottom: 100,
+    bottom: 80,
     alignSelf: "center",
     alignItems: "center",
     zIndex: 20,
   },
-  wayfinderDim: { opacity: 0.5 },
   compassBase: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(0,0,0,0.8)",
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: "rgba(0,0,0,0.85)",
     borderWidth: 1,
-    borderColor: "rgba(0,255,255,0.2)",
+    borderColor: "rgba(0,255,255,0.3)",
     justifyContent: "center",
     alignItems: "center",
-    overflow: "hidden",
   },
-  compassCaptured: { borderColor: "rgba(255,215,0,0.4)" },
   lubberLine: {
     position: "absolute",
     top: 0,
     width: 3,
-    height: 12,
+    height: 10,
     backgroundColor: "#ff3333",
-    zIndex: 10,
   },
   floatingDisc: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 90,
+    height: 90,
     justifyContent: "center",
     alignItems: "center",
   },
-
-  targetIcon: { color: "#00ffff", fontSize: 28 },
-  targetLabel: { color: "#00ffff", fontSize: 7, fontWeight: "900" },
-  iconOut: { color: "#ff3333" },
-  iconCaptured: { color: "#ffd700" },
-  textOut: { color: "#ffaaaa" },
-  textCaptured: { color: "#ffd700" },
-
+  targetIcon: { color: "#00ffff", fontSize: 24 },
   instructionPill: {
     marginTop: 15,
+    width: width * 0.85,
     backgroundColor: "rgba(0,0,0,0.9)",
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 2,
+    padding: 12,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: "#00ffff",
     alignItems: "center",
   },
   pillOut: { borderColor: "#ff3333" },
-  pillCaptured: { borderColor: "#ffd700" },
   instructionText: {
     color: "#fff",
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: "900",
     letterSpacing: 1,
+    marginBottom: 8,
   },
-  routeInstructionText: {
+  routeContainer: {
+    width: "100%",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,255,255,0.2)",
+    paddingTop: 8,
+    alignItems: "center",
+  },
+  routeCurrent: {
     color: "#00ffff",
-    fontSize: 9,
-    fontWeight: "600",
-    letterSpacing: 1.5,
-    marginTop: 4,
-    opacity: 0.8,
+    fontSize: 11,
+    fontWeight: "700",
     textAlign: "center",
+    marginBottom: 4,
   },
-
+  routeNext: { color: "#fff", fontSize: 9, opacity: 0.6, textAlign: "center" },
   captureButton: {
     marginTop: 15,
     backgroundColor: "rgba(0,255,255,0.2)",
-    paddingHorizontal: 25,
-    paddingVertical: 12,
+    paddingHorizontal: 30,
+    paddingVertical: 15,
     borderRadius: 4,
     borderWidth: 2,
     borderColor: "#00ffff",
-    alignItems: "center",
-    shadowColor: "#00ffff",
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
   },
-  captureText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "900",
-    letterSpacing: 2,
-  },
-
-  infoPanel: {
-    position: "absolute",
-    bottom: 300,
-    alignSelf: "center",
-    width: "85%",
-    backgroundColor: "rgba(0,0,0,0.95)",
-    padding: 20,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: "#00ffff",
-    zIndex: 30,
-  },
-  infoTitle: {
-    color: "#00ffff",
-    fontSize: 16,
-    fontWeight: "900",
-    marginBottom: 5,
-  },
-  infoMeta: {
-    color: "#fff",
-    fontSize: 10,
-    opacity: 0.6,
-    marginBottom: 10,
-    letterSpacing: 1,
-  },
-  infoFact: { color: "#fff", fontSize: 12, lineHeight: 18 },
+  captureText: { color: "#fff", fontSize: 18, fontWeight: "900" },
 });
