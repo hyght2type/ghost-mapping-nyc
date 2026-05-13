@@ -34,7 +34,6 @@ const GHOST_SITES = [
     id: "st-stephens",
     name: "ST. STEPHEN THE FIRST MARTYR",
     address: "149 East 28th Street",
-    // FIX: Shifted the GPS coordinate South from the center of the structure directly onto the 28th Street front steps
     coords: { latitude: 40.74222, longitude: -73.98038 },
     year: "EST. 1854",
     architect: "JAMES RENWICK JR.",
@@ -223,7 +222,6 @@ export default function App() {
   }, [permission]);
 
   useEffect(() => {
-    // FIX: Removed the broken safety check so your real key can actually fire
     if (!GOOGLE_API_KEY) {
       setRouteInstruction("ROUTING OFFLINE // API KEY REQUIRED");
       return;
@@ -264,6 +262,7 @@ export default function App() {
     return () => clearInterval(routeInterval);
   }, [activeTarget]);
 
+  // FIX: This loop now ONLY handles the Auto-Radar switching logic
   useEffect(() => {
     if (!userLoc) return;
 
@@ -287,19 +286,26 @@ export default function App() {
     if (autoRadarActive && closestSite.id !== activeTarget.id) {
       setActiveTarget(closestSite);
     }
-
-    if (shortestDistance <= MAX_DETECTION_RADIUS) {
-      setInRange(true);
-    } else {
-      setInRange(false);
-    }
   }, [userLoc, autoRadarActive, activeTarget]);
 
+  // FIX: This loop now precisely tracks the inRange state specifically for the ACTIVE target
   useEffect(() => {
     if (!userLoc || !activeTarget) return;
 
     const dLat = activeTarget.coords.latitude - userLoc.latitude;
     const dLon = activeTarget.coords.longitude - userLoc.longitude;
+
+    const distY = dLat * 111320;
+    const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
+    const realDist = Math.sqrt(distX * distX + distY * distY);
+
+    let currentInRange = false;
+    if (!isNaN(realDist)) {
+      setDistanceToTarget(realDist);
+      currentInRange = realDist <= MAX_DETECTION_RADIUS;
+      setInRange(currentInRange);
+    }
+
     const dy = dLat;
     const dx = dLon * Math.cos(userLoc.latitude * (Math.PI / 180));
     const bearing = (Math.atan2(dx, dy) * (180 / Math.PI) + 360) % 360;
@@ -313,7 +319,7 @@ export default function App() {
 
     const hasBeenCaptured = capturedGhosts.includes(activeTarget.id);
 
-    if (!inRange) {
+    if (!currentInRange) {
       setTurnInstruction("APPROACHING TARGET REGION");
     } else if (hasBeenCaptured) {
       setTurnInstruction("SIGNAL CONTAINED");
@@ -322,13 +328,7 @@ export default function App() {
       else if (diff < 0) setTurnInstruction("◀ TURN LEFT");
       else setTurnInstruction("TURN RIGHT ▶");
     }
-
-    const distY = dLat * 111320;
-    const distX = dLon * 111320 * Math.cos(userLoc.latitude * (Math.PI / 180));
-    const realDist = Math.sqrt(distX * distX + distY * distY);
-
-    if (!isNaN(realDist)) setDistanceToTarget(realDist);
-  }, [userLoc, trueHeading, activeTarget, inRange, capturedGhosts]);
+  }, [userLoc, trueHeading, activeTarget, capturedGhosts]);
 
   const cycleTarget = () => {
     setAutoRadarActive(false);
