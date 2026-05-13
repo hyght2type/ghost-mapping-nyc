@@ -81,7 +81,6 @@ export default function App() {
   const [wayfinderRotation, setWayfinderRotation] = useState(0);
   const [turnInstruction, setTurnInstruction] = useState("CALIBRATING...");
 
-  // NEW: More descriptive routing state
   const [currentStep, setCurrentStep] = useState("AWAITING GPS...");
   const [nextStep, setNextStep] = useState("");
   const [stepDistance, setStepDistance] = useState("");
@@ -215,7 +214,6 @@ export default function App() {
     };
   }, [permission]);
 
-  // ENHANCED ROUTING ENGINE: Grabs current and next step
   useEffect(() => {
     if (!GOOGLE_API_KEY) {
       setCurrentStep("AIzaSyDTIVetes1xe40R8d6e7bsI8vL7VXh1p_U");
@@ -233,7 +231,6 @@ export default function App() {
         if (data.routes && data.routes.length > 0) {
           const steps = data.routes[0].legs[0].steps;
           if (steps && steps.length > 0) {
-            // Parse Current Step
             let currentRaw = steps[0].html_instructions.replace(
               /<[^>]*>?/gm,
               "",
@@ -241,7 +238,6 @@ export default function App() {
             setCurrentStep(currentRaw.toUpperCase());
             setStepDistance(steps[0].distance.text);
 
-            // Parse Next Step if it exists
             if (steps.length > 1) {
               let nextRaw = steps[1].html_instructions.replace(
                 /<[^>]*>?/gm,
@@ -262,7 +258,7 @@ export default function App() {
     };
 
     fetchRoute();
-    const routeInterval = setInterval(fetchRoute, 8000); // Slightly faster polling for city walking
+    const routeInterval = setInterval(fetchRoute, 8000);
     return () => clearInterval(routeInterval);
   }, [activeTarget]);
 
@@ -343,7 +339,6 @@ export default function App() {
       <StatusBar hidden />
       <CameraView style={StyleSheet.absoluteFill} facing="back" active={true} />
 
-      {/* HEADER HUD */}
       <TouchableOpacity
         style={[
           styles.headerBar,
@@ -362,20 +357,21 @@ export default function App() {
         </Text>
       </TouchableOpacity>
 
-      {/* MINI COMPASS */}
-      <View style={styles.compassPosition}>
+      {/* FIX: Reverted Golden Compass to original absolute positioning */}
+      <View style={styles.compassPosition} pointerEvents="none">
         <View
           style={[
             styles.ring,
             { transform: [{ rotate: `${(360 - flatHeading) % 360}deg` }] },
           ]}
         >
-          <Text style={styles.nText}>N</Text>
+          <View style={styles.northMarker}>
+            <Text style={styles.nText}>N</Text>
+          </View>
         </View>
         <View style={styles.fixedIndicator} />
       </View>
 
-      {/* CENTRAL WAYFINDER & STEP-BY-STEP HUD */}
       <View style={[styles.wayfinderLayer, !inRange && { opacity: 0.5 }]}>
         <View
           style={[styles.compassBase, isCaptured && { borderColor: "#ffd700" }]}
@@ -410,10 +406,7 @@ export default function App() {
           </TouchableOpacity>
         ) : (
           <View style={[styles.instructionPill, !inRange && styles.pillOut]}>
-            {/* PRIMARY DIRECTION (GEOMETRIC) */}
             <Text style={styles.instructionText}>{turnInstruction}</Text>
-
-            {/* GOOGLE STREET INSTRUCTIONS */}
             <View style={styles.routeContainer}>
               <Text style={styles.routeCurrent}>
                 {isCaptured
@@ -428,7 +421,6 @@ export default function App() {
         )}
       </View>
 
-      {/* AR OVERLAY */}
       {inRange && turnInstruction === "LOCKED" && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Canvas gl={{ alpha: true }} camera={{ fov: 45 }}>
@@ -476,27 +468,31 @@ const styles = StyleSheet.create({
   },
   signalName: { color: "#fff", fontSize: 14, fontWeight: "900" },
   signalDist: { color: "#fff", fontSize: 22, fontWeight: "300" },
+
+  // FIX: Restored original Golden Compass dimensions and absolute position properties
   compassPosition: { position: "absolute", top: 60, right: 30, zIndex: 10 },
   ring: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     borderWidth: 2,
     borderColor: "#00ffff",
     backgroundColor: "rgba(0,0,0,0.8)",
     alignItems: "center",
     justifyContent: "center",
   },
-  nText: { color: "#00ffff", fontSize: 12, fontWeight: "900" },
+  northMarker: { position: "absolute", top: 2 },
+  nText: { color: "#00ffff", fontSize: 14, fontWeight: "900" },
   fixedIndicator: {
     position: "absolute",
     top: -4,
-    left: 23,
+    left: 28,
     width: 4,
-    height: 10,
+    height: 12,
     backgroundColor: "#ff3333",
     borderRadius: 2,
   },
+
   wayfinderLayer: {
     position: "absolute",
     bottom: 80,
