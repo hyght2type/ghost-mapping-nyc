@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
     color: "#00ffff",
     fontSize: 16,
     fontWeight: "900",
-    marginBottom: 5,
+    marginBottom: 4.5,
   },
   infoMeta: {
     color: "#fff",
